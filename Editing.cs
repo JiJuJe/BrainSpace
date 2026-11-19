@@ -436,7 +436,9 @@ internal sealed partial class Shell
             (false, true, Key.Home) => () => Navigate(Guid.Empty),
             (false, false, Key.Delete) => DeleteSelection,
             (false, false, Key.Escape) => () => { if (!canvas.CancelGesture()) { canvas.Connecting = null; canvas.Select(Guid.Empty); } },
-            (false, false, Key.F2 or Key.Enter) when canvas.Selection.Count == 1 && Keyboard.FocusedElement == canvas => () => Rename(canvas.Selection.First()),
+            (false, false, Key.Enter) when canvas.View.WholeWorkspace && canvas.Selection.Count == 1 && Keyboard.FocusedElement == canvas =>
+                () => { Guid id = canvas.Selection.First(); if (journal.Current.Brains.ContainsKey(id)) Navigate(id); else canvas.FocusObject(id); },
+            (false, false, Key.F2 or Key.Enter) when !canvas.View.WholeWorkspace && canvas.Selection.Count == 1 && Keyboard.FocusedElement == canvas => () => Rename(canvas.Selection.First()),
             (false, false, Key.Tab) when !shift && canvas.Selection.Count == 1 && Keyboard.FocusedElement == canvas && journal.Current.Brains.ContainsKey(canvas.Selection.First()) => () => AddChild(canvas.Selection.First()),
             (false, false, Key.V) when board != Guid.Empty => () => SetTool(Tool.Select),
             (false, false, Key.P) when board != Guid.Empty => () => SetTool(Tool.Pen),

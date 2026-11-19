@@ -161,7 +161,7 @@ internal sealed partial class Shell : Window
         AutomationProperties.SetName(resetZoom, "Reset zoom to 100 percent");
         zoom.Children.Add(resetZoom);
         zoom.Children.Add(IconButton("plus", "Zoom in", () => canvas.Zoom(1.2), 30, 33));
-        zoom.Children.Add(IconButton("fit", "Show full workspace (Shift+F)", canvas.ShowFullWorkspace, 32, 33));
+        zoom.Children.Add(IconButton("globe", "Workspace globe (Shift+F)", () => { canvas.Focus(); canvas.ShowFullWorkspace(); }, 32, 33));
         zoomBox = Frame(zoom, "BarBrush", new Thickness(1), 11, new Thickness(3));
         zoomBox.HorizontalAlignment = HorizontalAlignment.Right;
         zoomBox.VerticalAlignment = VerticalAlignment.Bottom;
@@ -307,7 +307,6 @@ internal sealed partial class Shell : Window
         bool showRail = settings.Rail && !onBoard;
         body.ColumnDefinitions[0].Width = new(showRail ? 59 : 0);
         rail.Visibility = showRail ? Visibility.Visible : Visibility.Collapsed;
-        boardTools.Visibility = onBoard ? Visibility.Visible : Visibility.Collapsed;
         boardSearch.Visibility = onBoard ? Visibility.Visible : Visibility.Collapsed;
         home.SetResourceReference(BackgroundProperty, onBoard ? "BarBrush" : "ActiveBrush");
         home.SetResourceReference(ForegroundProperty, onBoard ? "MutedBrush" : "AccentBrush");
@@ -357,7 +356,12 @@ internal sealed partial class Shell : Window
         }
     }
 
-    private void UpdateZoom() => zoomText.Text = canvas.View.Zoom < .01 ? "<1%" : $"{Math.Round(canvas.View.Zoom * 100)}%";
+    private void UpdateZoom()
+    {
+        zoomText.Text = canvas.View.Zoom < .01 ? "<1%" : $"{Math.Round(canvas.View.Zoom * 100)}%";
+        boardTools.Visibility = board != Guid.Empty && !canvas.View.WholeWorkspace ? Visibility.Visible : Visibility.Collapsed;
+        PositionZoomBox();
+    }
 
     private void SetTool(Tool tool)
     {
@@ -384,7 +388,7 @@ internal sealed partial class Shell : Window
     private void PositionZoomBox()
     {
         double width = boardLayer.ActualWidth > 0 ? boardLayer.ActualWidth : ActualWidth;
-        bool compact = board != Guid.Empty && (width < 565 || (width < 800 && inkOptions.Visibility == Visibility.Visible));
+        bool compact = board != Guid.Empty && !canvas.View.WholeWorkspace && (width < 565 || (width < 800 && inkOptions.Visibility == Visibility.Visible));
         zoomBox.VerticalAlignment = compact ? VerticalAlignment.Top : VerticalAlignment.Bottom;
         zoomBox.Margin = compact ? new(0, 16, 18, 0) : new(0, 0, 25, 25);
     }

@@ -8,7 +8,7 @@ On Windows 11 x64, download `BrainSpace-Windows-x64.zip` from [GitHub Releases](
 
 The map supports smooth cursor-centered zoom, drag panning and nested boards. Names shrink as you zoom out and stay centered on their nodes. In unusually dense views, hover a marker to reveal its name. New children join their parent’s branch in the next free slot. Use **Place with siblings on map** in a Brain’s context menu to align an existing child with its siblings. Whiteboards support freehand ink, shapes, inline notes, images and links. `Ctrl+K` searches Brains, notes and saved links. `Ctrl+Z` and `Ctrl+Y` undo and redo edits. Find the rest under **… → Keyboard shortcuts**.
 
-At the outermost zoom, BrainSpace centers the entire circular workspace. The frame icon or `Shift+F` also opens that view. `F` frames the content. The circle expands to cover anything placed beyond its current edge.
+At the outermost zoom, BrainSpace shows the workspace on a globe. Open it with the globe button or `Shift+F`. Drag or use the arrow keys to rotate, and press `Home` to reset the orientation. Double-click a visible Brain to open it, or scroll up to return to the editable map. The globe turns independently of the map, so rotating it preserves your layout. The `F` key frames the content.
 
 PNG and JPEG use built-in Windows codecs. WebP uses Microsoft's [WebP Image Extensions](https://learn.microsoft.com/windows/win32/wic/native-wic-codecs). Imported image bytes are copied into BrainSpace's own data directory and decoded as needed. For an isolated workspace, launch `BrainSpace.exe --data "C:\path\to\folder"`.
 

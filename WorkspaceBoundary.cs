@@ -15,7 +15,7 @@ internal sealed partial class WorkspaceCanvas
         {
             double diameter = Math.Max(1, Math.Min(ActualWidth - 64, ActualHeight - 100));
             double zoom = Math.Min(1, diameter / (2 * workspaceRadius));
-            return new(0, 0, zoom, WholeWorkspace: true);
+            return new(0, 0, zoom, WholeWorkspace: true, Rotation: view.Rotation);
         }
     }
 
@@ -23,6 +23,7 @@ internal sealed partial class WorkspaceCanvas
 
     private void ShowFullWorkspace(bool animate)
     {
+        CancelGesture();
         Viewport target = FullWorkspaceView;
         if (motionTo != target) AnimateTo(target, 205, animate);
     }
@@ -31,7 +32,7 @@ internal sealed partial class WorkspaceCanvas
     {
         if (ActualWidth <= 0 || ActualHeight <= 0) return viewport;
         Viewport whole = FullWorkspaceView;
-        if (viewport.WholeWorkspace || viewport.Zoom <= whole.Zoom) return whole;
+        if (viewport.WholeWorkspace || viewport.Zoom <= whole.Zoom) return whole with { Rotation = viewport.Rotation };
         var current = new Vector(viewport.X, viewport.Y);
         Vector offset = ClampLength(current, workspaceRadius * viewport.Zoom);
         if (offset == current) return viewport;
@@ -61,6 +62,9 @@ internal sealed partial class WorkspaceCanvas
         }
         double extent = Math.Sqrt(extentSquared);
         workspaceRadius = RadiusFor(extent);
+        globeMapRadius = Math.Clamp(extent * 1.24, 850, workspaceRadius);
+        globeAnchors = [];
+        globeLabelSize = default;
         FitAfterWorkspaceChange();
     }
 

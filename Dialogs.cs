@@ -174,6 +174,7 @@ internal sealed partial class Shell
             ("Alt+Left / Right", "Back / forward"), ("Ctrl+Z / Y", "Undo / redo"), ("Ctrl+C / V / D", "Copy / paste / duplicate"),
             ("Shift+drag", "Select objects in an area"), ("Space+drag / middle drag", "Pan"), ("F / Shift+F", "Fit content / show full workspace"),
             ("Ctrl+0", "Reset zoom to 100%"),
+            ("Shift+F / arrows / Home", "Open globe / rotate / reset orientation"),
             ("V / P / H / E / T", "Select / pen / highlighter / eraser / text"), ("R / O / L", "Rectangle / ellipse / line")
         })
         {

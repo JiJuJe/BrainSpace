@@ -6,7 +6,7 @@ namespace BrainSpace;
 
 internal sealed partial class WorkspaceCanvas
 {
-    private enum Gesture { None, Pan, Move, Marquee, Resize, Draw, Erase }
+    private enum Gesture { None, Pan, RotateGlobe, Move, Marquee, Resize, Draw, Erase }
     private Gesture gesture;
     private Point startScreen, startWorld, cursorWorld;
     private Viewport startView = new();
@@ -26,7 +26,8 @@ internal sealed partial class WorkspaceCanvas
     {
         get
         {
-            Point location = ToWorld(IsMouseOver ? Mouse.GetPosition(this) : Center);
+            Point pointer = IsMouseOver ? Mouse.GetPosition(this) : Center;
+            Point location = view.WholeWorkspace ? GlobeWorldAt(pointer) ?? new Point() : ToWorld(pointer);
             return InsideWorkspace(location) ? location : new Point();
         }
     }
@@ -43,6 +44,7 @@ internal sealed partial class WorkspaceCanvas
     {
         if (gesture == Gesture.None) return false;
         if (gesture == Gesture.Pan) SetView(startView);
+        if (gesture == Gesture.RotateGlobe) SetView(startView with { Rotation = startView.Rotation ?? UprightGlobe });
         gesture = Gesture.None;
         if (IsMouseCaptured) ReleaseMouseCapture();
         erased.Clear(); stroke.Clear(); delta = new();
@@ -69,6 +71,20 @@ internal sealed partial class WorkspaceCanvas
         startWorld = cursorWorld = ToWorld(startScreen);
         moved = false;
         delta = new();
+        if (view.WholeWorkspace)
+        {
+            if (e.ChangedButton is MouseButton.Left or MouseButton.Middle && (startScreen - Center).Length <= GlobeRadius)
+            {
+                startView = view;
+                globePointer = startScreen;
+                globeClickCount = e.ClickCount;
+                globeButton = e.ChangedButton;
+                Cursor = Cursors.Hand;
+                Start(Gesture.RotateGlobe);
+            }
+            e.Handled = true;
+            return;
+        }
         if (!InsideWorkspace(startWorld))
         {
             if (e.ChangedButton is MouseButton.Left or MouseButton.Middle && !view.WholeWorkspace) BeginPan();
@@ -177,6 +193,21 @@ internal sealed partial class WorkspaceCanvas
     {
         base.OnMouseMove(e);
         Point screen = e.GetPosition(this);
+        if (view.WholeWorkspace)
+        {
+            if (gesture == Gesture.RotateGlobe)
+            {
+                moved |= (screen - startScreen).LengthSquared >= 9;
+                if (moved) { DragGlobe(globePointer, screen); globePointer = screen; }
+            }
+            else
+            {
+                Cursor = (screen - Center).Length <= GlobeRadius ? Cursors.Hand : Cursors.Arrow;
+                Guid hit = HitGlobe(screen)?.Id ?? Guid.Empty;
+                if (hit != hovered) { hovered = hit; InvalidateVisual(); }
+            }
+            return;
+        }
         cursorWorld = ToWorld(screen);
         if (gesture == Gesture.None)
         {
@@ -230,7 +261,9 @@ internal sealed partial class WorkspaceCanvas
     protected override void OnMouseUp(MouseButtonEventArgs e)
     {
         base.OnMouseUp(e);
-        if (gesture == Gesture.None || e.ChangedButton == MouseButton.Right || (e.ChangedButton == MouseButton.Middle && gesture != Gesture.Pan)) return;
+        if (gesture == Gesture.None || e.ChangedButton == MouseButton.Right ||
+            (e.ChangedButton == MouseButton.Middle && gesture is not (Gesture.Pan or Gesture.RotateGlobe))) return;
+        if (gesture == Gesture.RotateGlobe && e.ChangedButton != globeButton) return;
         Gesture action = gesture;
         Item? draft = CurrentDraft();
         gesture = Gesture.None;
@@ -238,6 +271,19 @@ internal sealed partial class WorkspaceCanvas
         Cursor = CurrentTool == Tool.Select ? Cursors.Arrow : Cursors.Cross;
         switch (action)
         {
+            case Gesture.RotateGlobe:
+                if (moved) ViewChanged?.Invoke(view);
+                else if (e.ChangedButton == MouseButton.Left)
+                {
+                    SceneObject? hit = HitGlobe(e.GetPosition(this));
+                    Select(hit?.Id ?? Guid.Empty);
+                    if (globeClickCount == 2 && hit is not null)
+                    {
+                        if (hit.Brain is not null) OpenBrain?.Invoke(hit.Id);
+                        else FocusObject(hit.Id);
+                    }
+                }
+                break;
             case Gesture.Pan:
                 if (moved)
                 {
@@ -273,6 +319,22 @@ internal sealed partial class WorkspaceCanvas
         }
         erased.Clear(); stroke.Clear(); delta = new();
         InvalidateVisual();
+        e.Handled = true;
+    }
+
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        base.OnKeyDown(e);
+        if (!view.WholeWorkspace || gesture != Gesture.None || Keyboard.Modifiers != ModifierKeys.None) return;
+        switch (e.Key)
+        {
+            case Key.Left: RotateGlobe(new(0, 1, 0), -12, notify: true); break;
+            case Key.Right: RotateGlobe(new(0, 1, 0), 12, notify: true); break;
+            case Key.Up: RotateGlobe(new(1, 0, 0), 12, notify: true); break;
+            case Key.Down: RotateGlobe(new(1, 0, 0), -12, notify: true); break;
+            case Key.Home: SetView(view with { Rotation = UprightGlobe }); break;
+            default: return;
+        }
         e.Handled = true;
     }
 

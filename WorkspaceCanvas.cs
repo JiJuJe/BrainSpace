@@ -61,8 +61,8 @@ internal sealed partial class WorkspaceCanvas : FrameworkElement
         AllowDrop = true;
         Unloaded += (_, _) => StopMotion();
         SizeChanged += (_, _) => FitAfterWorkspaceChange();
-        DragOver += (_, args) => { args.Effects = board != Guid.Empty && args.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None; args.Handled = true; };
-        Drop += (_, args) => { if (board != Guid.Empty && args.Data.GetData(DataFormats.FileDrop) is string[] files) ImportFiles?.Invoke(files, ToWorld(args.GetPosition(this))); };
+        DragOver += (_, args) => { args.Effects = board != Guid.Empty && !view.WholeWorkspace && args.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None; args.Handled = true; };
+        Drop += (_, args) => { if (board != Guid.Empty && !view.WholeWorkspace && args.Data.GetData(DataFormats.FileDrop) is string[] files) ImportFiles?.Invoke(files, ToWorld(args.GetPosition(this))); };
         journal.Changed += RefreshScene;
     }
 
@@ -84,6 +84,7 @@ internal sealed partial class WorkspaceCanvas : FrameworkElement
         overviewDrawing = null;
         pens.Clear();
         dotTile = null;
+        globeFill = null;
         InvalidateVisual();
     }
 
@@ -123,10 +124,11 @@ internal sealed partial class WorkspaceCanvas : FrameworkElement
     {
         if (zoom <= FullWorkspaceView.Zoom) { ShowFullWorkspace(animate); return; }
         Point screen = anchor ?? Center;
-        Point world = ToWorld(screen);
+        Point world = view.WholeWorkspace ? GlobeWorldAt(screen) ?? new Point() : ToWorld(screen);
         zoom = Math.Min(zoom, 4);
         if (motionTo?.Zoom == zoom) return;
-        AnimateTo(new(screen.X - Center.X - world.X * zoom, screen.Y - Center.Y - world.Y * zoom, zoom), 175, animate);
+        Viewport Pose(double scale) => new(screen.X - Center.X - world.X * scale, screen.Y - Center.Y - world.Y * scale, scale);
+        AnimateTo(Pose(zoom), 175, animate, view.WholeWorkspace ? Pose(view.Zoom) : null);
     }
 
     public void PanFrom(Viewport origin, Vector screenDelta, bool notify = true) =>
@@ -146,7 +148,7 @@ internal sealed partial class WorkspaceCanvas : FrameworkElement
 
     private void SetView(Viewport viewport, bool notify = true)
     {
-        view = ConstrainView(viewport);
+        view = ConstrainView(viewport with { Rotation = viewport.Rotation ?? view.Rotation });
         if (notify) ViewChanged?.Invoke(view);
         InvalidateVisual();
     }
@@ -219,6 +221,11 @@ internal sealed partial class WorkspaceCanvas : FrameworkElement
         var screen = new Rect(RenderSize);
         requestVisibleImages.Clear();
         if (screen.IsEmpty || screen.Width <= 0 || screen.Height <= 0) return;
+        if (view.WholeWorkspace)
+        {
+            DrawGlobe(drawing, screen);
+            return;
+        }
         Item? draft = CurrentDraft();
         EllipseGeometry? boundary = DrawWorkspaceBackground(drawing, screen, draft);
         DrawDots(drawing);

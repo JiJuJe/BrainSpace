@@ -13,7 +13,7 @@ internal sealed partial class WorkspaceCanvas
     private double zoomTrail;
     public event Action? ZoomProgress;
 
-    private void AnimateTo(Viewport destination, double milliseconds, bool animate)
+    private void AnimateTo(Viewport destination, double milliseconds, bool animate, Viewport? start = null)
     {
         if (!animate || !IsLoaded || !SystemParameters.ClientAreaAnimation)
         {
@@ -23,7 +23,7 @@ internal sealed partial class WorkspaceCanvas
         }
         if (destination == view && motionTo is null) return;
         if (motionTo is null) CompositionTarget.Rendering += OnCameraFrame;
-        motionFrom = view;
+        motionFrom = start ?? view;
         motionTo = destination;
         motionStart = Stopwatch.GetTimestamp();
         motionDuration = milliseconds;

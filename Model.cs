@@ -14,7 +14,8 @@ internal sealed record Item(Guid Id, Guid Board, ItemKind Kind, double X, double
 
 internal sealed record Edge(Guid Id, Guid From, Guid To);
 internal readonly record struct GlobeOrientation(double X, double Y, double Z, double W);
-internal sealed record Viewport(double X = 0, double Y = 0, double Zoom = 1, bool WholeWorkspace = false, GlobeOrientation? Rotation = null);
+internal sealed record Viewport(double X = 0, double Y = 0, double Zoom = 1, bool WholeWorkspace = false,
+    GlobeOrientation? Rotation = null, double GlobeMagnification = 1);
 internal sealed record Preferences(bool Light = false, string Accent = "#83C6FB", bool CursorZoom = true,
     bool Rail = true, string InkColor = "#59CEE0", double InkWidth = 3, double InkOpacity = 1);
 internal sealed record Session(Guid Board, Preferences Settings, Dictionary<Guid, Viewport> Views);

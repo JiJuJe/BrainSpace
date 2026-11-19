@@ -44,6 +44,7 @@ internal static class Icons
         ["minimize"] = "M5 13 H19", ["maximize"] = "M5 5 H19 V19 H5 Z", ["restore"] = "M8 5 H19 V16 M5 8 H16 V19 H5 Z",
         ["close"] = "M6 6 L18 18 M18 6 L6 18",
         ["globe"] = "M22 12 A10 10 0 1 1 2 12 A10 10 0 1 1 22 12 M2 12 H22 M12 2 C6.5 7 6.5 17 12 22 C17.5 17 17.5 7 12 2",
+        ["map"] = "M3 6 L9 3 L15 6 L21 3 V18 L15 21 L9 18 L3 21 Z M9 3 V18 M15 6 V21",
         ["select"] = "M5 3 L19 13 L12 14 L9 21 Z", ["pen"] = "M4 16 L16 4 A2.1 2.1 0 0 1 19 4 L20 5 A2.1 2.1 0 0 1 20 8 L8 20 L3 21 Z M14 6 L18 10",
         ["marker"] = "M4 16 L14 6 L19 11 L9 21 H4 Z M12 8 L17 3 L22 8 L17 13 M5 15 L10 20",
         ["eraser"] = "M3 15 L14 4 Q15 3 16 4 L21 9 Q22 10 21 11 L12 20 H8 Z M8 10 L16 18 M13 20 H22",

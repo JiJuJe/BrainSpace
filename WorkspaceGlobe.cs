@@ -12,10 +12,11 @@ internal sealed partial class WorkspaceCanvas
     private const int GlobeLabelLimit = 54;
     private double globeMapRadius = 850;
     private double GlobeRadius => workspaceRadius * view.Zoom;
+    private Point GlobeCenter => Center + new Vector(view.X, view.Y);
     private Point3D[] globeAnchors = [], globeProjected = [];
     private bool[] globeDotCells = [];
     private readonly List<(SceneObject Object, Rect Bounds)> globeLabels = [];
-    private GlobeOrientation? globeLabelRotation;
+    private Viewport? globeLabelView;
     private Size globeLabelSize;
     private Brush? globeFill, globeGridBrush;
     private Point globePointer;
@@ -57,14 +58,14 @@ internal sealed partial class WorkspaceCanvas
 
     private Vector3D Trackball(Point point)
     {
-        Vector position = (point - Center) / Math.Max(1, GlobeRadius);
+        Vector position = (point - GlobeCenter) / Math.Max(1, GlobeRadius);
         if (position.LengthSquared >= 1) return new(position.X / position.Length, position.Y / position.Length, 0);
         return new(position.X, position.Y, Math.Sqrt(1 - position.LengthSquared));
     }
 
     private Point? GlobeWorldAt(Point point)
     {
-        if ((point - Center).Length > GlobeRadius) return null;
+        if ((point - GlobeCenter).LengthSquared > GlobeRadius * GlobeRadius) return null;
         Matrix3D inverse = GlobeMatrix();
         inverse.Invert();
         Vector3D surface = inverse.Transform(Trackball(point));
@@ -87,14 +88,14 @@ internal sealed partial class WorkspaceCanvas
     private void DrawGlobe(DrawingContext drawing, Rect screen)
     {
         double radius = GlobeRadius;
-        Point center = Center;
+        Point center = GlobeCenter;
         drawing.DrawRectangle(theme.CanvasOutside, null, screen);
         if (radius <= 1) return;
         EnsureGlobeAnchors();
         Matrix3D matrix = GlobeMatrix();
         for (int i = 0; i < globeAnchors.Length; i++) globeProjected[i] = matrix.Transform(globeAnchors[i]);
         globeLabels.Clear();
-        globeLabelRotation = view.Rotation;
+        globeLabelView = view;
         globeLabelSize = RenderSize;
 
         if (globeFill is null) CreateGlobeBrushes();
@@ -146,10 +147,13 @@ internal sealed partial class WorkspaceCanvas
             if (globeDotCells.Length < cells) globeDotCells = new bool[cells];
             else Array.Clear(globeDotCells, 0, cells);
         }
+        double labelScale = Math.Min(1.65, Math.Sqrt(view.GlobeMagnification));
         foreach (SceneObject obj in objects)
         {
             Point3D point = globeProjected[obj.Order];
             if (point.Z <= 0) continue;
+            Point at = GlobeScreen(point, center, radius);
+            if (!screen.Contains(at)) continue;
             if (dense)
             {
                 int x = (int)((point.X + 1) * radius / cellSize);
@@ -158,8 +162,8 @@ internal sealed partial class WorkspaceCanvas
                 if (globeDotCells[cell]) continue;
                 globeDotCells[cell] = true;
             }
-            double size = .9 + point.Z * 1.15;
-            drawing.DrawEllipse(theme.Muted, null, GlobeScreen(point, center, radius), size, size);
+            double size = (.9 + point.Z * 1.15) * labelScale;
+            drawing.DrawEllipse(theme.Muted, null, at, size, size);
         }
 
         int labelsMeasured = 0;
@@ -177,14 +181,17 @@ internal sealed partial class WorkspaceCanvas
             bool active = obj.Id == hovered || Selection.Contains(obj.Id);
             FormattedText label = GlobeText(obj);
             drawing.DrawRoundedRectangle(active ? theme.Active : theme.Node, Stroke(active ? theme.Accent : theme.Edge, active ? 1.2 : .8), bounds, 8, 8);
-            drawing.DrawText(label, new(bounds.X + (bounds.Width - label.Width) / 2, bounds.Y + (bounds.Height - label.Height) / 2));
+            Point at = new(bounds.X + bounds.Width / 2, bounds.Y + bounds.Height / 2);
+            if (labelScale != 1) drawing.PushTransform(new ScaleTransform(labelScale, labelScale, at.X, at.Y));
+            drawing.DrawText(label, new(at.X - label.Width / 2, at.Y - label.Height / 2));
+            if (labelScale != 1) drawing.Pop();
         }
         drawing.Pop();
         drawing.DrawGeometry(null, Stroke(theme.Edge, 1.2), outline);
 
-        if (radius >= 105)
+        if (radius >= 105 && center.Y + radius + 30 < screen.Bottom)
         {
-            FormattedText hint = Text("Drag to rotate  ·  Scroll to zoom", 11, 205, theme.Muted, false, false);
+            FormattedText hint = Text("Drag to rotate  ·  Scroll to zoom  ·  F for map", 11, 265, theme.Muted, false, false);
             drawing.DrawText(hint, new(center.X - hint.Width / 2, center.Y + radius + 13));
         }
 
@@ -194,11 +201,12 @@ internal sealed partial class WorkspaceCanvas
             Point3D point = globeProjected[obj.Order];
             if (point.Z < (active ? .01 : .13)) return;
             Point at = GlobeScreen(point, center, radius);
+            if (!screen.Contains(at)) return;
             foreach (var existing in globeLabels)
                 if (existing.Bounds.Contains(at)) return;
             labelsMeasured++;
             FormattedText label = GlobeText(obj);
-            double width = label.Width + 14, height = Math.Max(19, label.Height + 5);
+            double width = (label.Width + 14) * labelScale, height = Math.Max(19, label.Height + 5) * labelScale;
             var bounds = new Rect(at.X - width / 2, at.Y - height / 2, width, height);
             if (!active && ((bounds.TopLeft - center).LengthSquared >= radius * radius ||
                 (bounds.TopRight - center).LengthSquared >= radius * radius ||
@@ -219,8 +227,9 @@ internal sealed partial class WorkspaceCanvas
     private SceneObject? HitGlobe(Point point)
     {
         double radius = GlobeRadius;
-        if ((point - Center).LengthSquared > radius * radius) return null;
-        if (globeLabelRotation == view.Rotation && globeLabelSize == RenderSize)
+        Point center = GlobeCenter;
+        if ((point - center).LengthSquared > radius * radius) return null;
+        if (globeLabelView == view && globeLabelSize == RenderSize)
             foreach (var label in globeLabels)
                 if (label.Bounds.Contains(point)) return label.Object;
         EnsureGlobeAnchors();
@@ -231,7 +240,7 @@ internal sealed partial class WorkspaceCanvas
         {
             Point3D projected = matrix.Transform(globeAnchors[obj.Order]);
             if (projected.Z <= 0) continue;
-            double squared = (GlobeScreen(projected, Center, radius) - point).LengthSquared;
+            double squared = (GlobeScreen(projected, center, radius) - point).LengthSquared;
             if (squared >= distance) continue;
             nearest = obj;
             distance = squared;

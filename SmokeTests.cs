@@ -88,14 +88,32 @@ internal sealed partial class WorkspaceCanvas
             vertical.Z > 0 && view.WholeWorkspace && view.X == 0 && view.Y == 0 && HitGlobe(marker)?.Id == root.Id;
 
         Point world = new(root.Bounds.X + root.Bounds.Width / 2, root.Bounds.Y + root.Bounds.Height / 2);
-        Zoom(1.6, marker, animate: false);
-        bool zoomedToMarker = !view.WholeWorkspace && (ToWorld(marker) - world).Length < .001;
+        Zoom(1.6, marker);
+        bool staysGlobe = true;
+        if (motionTo is not null)
+        {
+            AdvanceCamera(.4);
+            staysGlobe = view.WholeWorkspace && view.GlobeMagnification > 1;
+            AdvanceCamera(1);
+        }
+        bool zoomedToMarker = staysGlobe && view.WholeWorkspace && Math.Abs(view.GlobeMagnification - 1.6) < .001 &&
+            GlobeWorldAt(marker) is Point anchored && (anchored - world).Length < .001;
+        Zoom(20, animate: false);
+        Point3D beforeDrag = GlobeMatrix().Transform(anchor);
+        DragGlobe(GlobeCenter, GlobeCenter + new Vector(45, 22));
+        Point3D afterDrag = GlobeMatrix().Transform(anchor);
+        bool rotatesAtMax = view.WholeWorkspace && view.GlobeMagnification == MaxGlobeMagnification &&
+            (afterDrag - beforeDrag).Length > .02;
         ZoomTo(0, animate: false);
+        bool fitsAgain = view.WholeWorkspace && view.GlobeMagnification == 1 && view.X == 0 && view.Y == 0;
         SetView(view with { Rotation = UprightGlobe }, notify: false);
         RotateGlobe(new(0, 1, 0), 180, notify: false);
         bool backHidden = GlobeMatrix().Transform(anchor).Z < 0 && HitGlobe(Center) is null;
+        Fit(animate: false);
+        bool returnedToMap = !view.WholeWorkspace;
         SetView(before with { Rotation = before.Rotation ?? UprightGlobe });
-        return rotated && zoomedToMarker && backHidden && TryBounds(root.Id, out Rect unchanged) && unchanged == root.Bounds;
+        return rotated && zoomedToMarker && rotatesAtMax && fitsAgain && backHidden && returnedToMap &&
+            TryBounds(root.Id, out Rect unchanged) && unchanged == root.Bounds;
     }
 
     internal double MeasureGlobeFrames()
@@ -143,7 +161,7 @@ internal static class SmokeTests
             var session = new Session(grandchild, new(), new()
             {
                 [grandchild] = new(19, -27, 1.2),
-                [Guid.Empty] = new(0, 0, .08, WholeWorkspace: true, Rotation: orientation)
+                [Guid.Empty] = new(0, 0, .08, WholeWorkspace: true, Rotation: orientation, GlobeMagnification: 1.65)
             });
             using (var store = new Storage(dataPath))
             {
@@ -169,7 +187,8 @@ internal static class SmokeTests
                 var (loaded, state) = store.Load();
                 Check(loaded.Trail(grandchild).Select(brain => brain.Id).SequenceEqual(new[] { root, child, grandchild }), "Three-level hierarchy survives restart");
                 Check(loaded.Brains[grandchild].X == 285 && state?.Board == grandchild && state.Views[grandchild].Zoom == 1.2, "Node positions, active board, and zoom survive restart");
-                Check(state?.Views[Guid.Empty] is { WholeWorkspace: true } saved && saved.Rotation == orientation, "The globe orientation survives a workspace restart");
+                Check(state?.Views[Guid.Empty] is { WholeWorkspace: true, GlobeMagnification: 1.65 } saved && saved.Rotation == orientation,
+                    "The globe orientation and magnification survive a workspace restart");
                 Check(loaded.Items[note].Text.Contains("Second line") && loaded.Items[note].Bold, "Multiline text and formatting survive restart");
                 Check(loaded.Items[stroke].Points?[1] == new Point(12, 18), "Drawing points survive restart");
                 Check(store.LoadImage(loaded.Items[image].Target, 24)?.PixelHeight == 18, "PNG assets are decoded after restart");
@@ -278,14 +297,17 @@ internal static class SmokeTests
             Check(far.All(label => label.Value >= 5.5 && label.Value < medium[label.Key]),
                 "At 10% all six sample names are drawn smaller on the same world anchors and each center selects its original Brain");
             Check(demo.VerifyWorkspaceCircle(), "The outer zoom centers the full circle and keeps it visible during a pan");
-            Check(demo.VerifyGlobe(), "Dragging rotates the globe horizontally and vertically, back-side nodes are hidden, and zooming preserves the world position");
+            Check(demo.VerifyGlobe(), "The globe stays spherical during animated zoom and rotates at maximum magnification, with an explicit return to the editable map");
             demo.SetZoomPreview(0);
             demo.UpdateLayout();
             SaveScreenshot(demo, Path.Combine(output, "workspace-overview.png"));
             demo.RotateGlobePreview();
             demo.UpdateLayout();
             SaveScreenshot(demo, Path.Combine(output, "workspace-globe-rotated.png"));
-            demo.SetZoomPreview(.1);
+            demo.ZoomGlobePreview();
+            demo.UpdateLayout();
+            SaveScreenshot(demo, Path.Combine(output, "workspace-globe-zoomed.png"));
+            demo.PreviewMap();
             demo.ShowSearchPreview();
             demo.UpdateLayout();
             SaveScreenshot(demo, Path.Combine(output, "search.png"));
@@ -336,6 +358,8 @@ internal sealed partial class Shell
     internal bool VerifyWorkspaceCircle() => canvas.VerifyWholeWorkspace();
     internal bool VerifyGlobe() => canvas.VerifyGlobeRotation();
     internal void RotateGlobePreview() => canvas.RotateGlobePreview();
+    internal void ZoomGlobePreview() => canvas.Zoom(1.42, animate: false);
+    internal void PreviewMap() => canvas.Fit(animate: false);
     internal void ShowSearchPreview() => ShowSearch();
     internal static bool SearchIndexSmoke(Content content) => Match(BuildSearchIndex(content), "Topic 3999", CancellationToken.None) is [{ Title: "Topic 3999" }];
     internal void PreviewMenu(string path)

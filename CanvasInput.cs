@@ -73,7 +73,7 @@ internal sealed partial class WorkspaceCanvas
         delta = new();
         if (view.WholeWorkspace)
         {
-            if (e.ChangedButton is MouseButton.Left or MouseButton.Middle && (startScreen - Center).Length <= GlobeRadius)
+            if (e.ChangedButton is MouseButton.Left or MouseButton.Middle && (startScreen - GlobeCenter).Length <= GlobeRadius)
             {
                 startView = view;
                 globePointer = startScreen;
@@ -202,7 +202,7 @@ internal sealed partial class WorkspaceCanvas
             }
             else
             {
-                Cursor = (screen - Center).Length <= GlobeRadius ? Cursors.Hand : Cursors.Arrow;
+                Cursor = (screen - GlobeCenter).Length <= GlobeRadius ? Cursors.Hand : Cursors.Arrow;
                 Guid hit = HitGlobe(screen)?.Id ?? Guid.Empty;
                 if (hit != hovered) { hovered = hit; InvalidateVisual(); }
             }

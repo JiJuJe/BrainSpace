@@ -7,6 +7,7 @@ internal sealed partial class WorkspaceCanvas
 {
     private const double StartingRadius = 3600;
     private const double RadiusStep = 900;
+    private const double MaxGlobeMagnification = 4;
     private double workspaceRadius = StartingRadius;
 
     private Viewport FullWorkspaceView
@@ -32,11 +33,18 @@ internal sealed partial class WorkspaceCanvas
     {
         if (ActualWidth <= 0 || ActualHeight <= 0) return viewport;
         Viewport whole = FullWorkspaceView;
-        if (viewport.WholeWorkspace || viewport.Zoom <= whole.Zoom) return whole with { Rotation = viewport.Rotation };
+        if (viewport.WholeWorkspace)
+        {
+            double scale = double.IsFinite(viewport.GlobeMagnification) ? Math.Clamp(viewport.GlobeMagnification, 1, MaxGlobeMagnification) : 1;
+            double zoom = whole.Zoom * scale;
+            Vector shift = ClampLength(new(viewport.X, viewport.Y), workspaceRadius * (zoom - whole.Zoom));
+            return viewport with { X = shift.X, Y = shift.Y, Zoom = zoom, GlobeMagnification = scale };
+        }
+        double flatZoom = Math.Max(viewport.Zoom, whole.Zoom * 1.001);
         var current = new Vector(viewport.X, viewport.Y);
-        Vector offset = ClampLength(current, workspaceRadius * viewport.Zoom);
-        if (offset == current) return viewport;
-        return viewport with { X = offset.X, Y = offset.Y };
+        Vector offset = ClampLength(current, workspaceRadius * flatZoom);
+        if (offset == current && flatZoom == viewport.Zoom) return viewport;
+        return viewport with { X = offset.X, Y = offset.Y, Zoom = flatZoom };
     }
 
     private void FitAfterWorkspaceChange()

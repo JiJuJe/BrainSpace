@@ -93,7 +93,8 @@ internal sealed partial class WorkspaceCanvas : FrameworkElement
         StopMotion();
         CancelGesture();
         board = id;
-        view = viewport.Zoom is > 0 and <= 4 && double.IsFinite(viewport.X) && double.IsFinite(viewport.Y) ? viewport : new();
+        view = viewport.Zoom > 0 && double.IsFinite(viewport.Zoom) && (viewport.WholeWorkspace || viewport.Zoom <= 4) &&
+            double.IsFinite(viewport.X) && double.IsFinite(viewport.Y) ? viewport : new();
         Connecting = null;
         Selection.Clear();
         SetTool(Tool.Select);
@@ -114,7 +115,7 @@ internal sealed partial class WorkspaceCanvas : FrameworkElement
         if (!TryBounds(id, out Rect rect)) return;
         Select(id);
         double zoom = Math.Max(.85, view.Zoom);
-        AnimateTo(new(-(rect.X + rect.Width / 2) * zoom, -(rect.Y + rect.Height / 2) * zoom, zoom), 165, true);
+        AnimateTo(new(-(rect.X + rect.Width / 2) * zoom, -(rect.Y + rect.Height / 2) * zoom, zoom), 165, !view.WholeWorkspace);
     }
 
     public void Zoom(double multiplier, Point? anchor = null, bool animate = true) =>
@@ -122,27 +123,49 @@ internal sealed partial class WorkspaceCanvas : FrameworkElement
 
     public void ZoomTo(double zoom, Point? anchor = null, bool animate = true)
     {
+        if (view.WholeWorkspace || motionTo?.WholeWorkspace == true)
+        {
+            if (!view.WholeWorkspace) StopMotion(finish: true);
+            Viewport whole = FullWorkspaceView;
+            double scale = Math.Clamp(zoom / whole.Zoom, 1, MaxGlobeMagnification);
+            double targetZoom = whole.Zoom * scale;
+            if (motionTo?.WholeWorkspace == true && motionTo.GlobeMagnification == scale) return;
+            Point screenAnchor = anchor ?? GlobeCenter;
+            if ((screenAnchor - GlobeCenter).LengthSquared > GlobeRadius * GlobeRadius) screenAnchor = GlobeCenter;
+            Vector shift = screenAnchor - Center - (screenAnchor - GlobeCenter) * (targetZoom / view.Zoom);
+            var target = whole with { X = shift.X, Y = shift.Y, Zoom = targetZoom, GlobeMagnification = scale };
+            AnimateTo(ConstrainView(target), 175, animate);
+            return;
+        }
         if (zoom <= FullWorkspaceView.Zoom) { ShowFullWorkspace(animate); return; }
         Point screen = anchor ?? Center;
-        Point world = view.WholeWorkspace ? GlobeWorldAt(screen) ?? new Point() : ToWorld(screen);
+        Point world = ToWorld(screen);
         zoom = Math.Min(zoom, 4);
         if (motionTo?.Zoom == zoom) return;
         Viewport Pose(double scale) => new(screen.X - Center.X - world.X * scale, screen.Y - Center.Y - world.Y * scale, scale);
-        AnimateTo(Pose(zoom), 175, animate, view.WholeWorkspace ? Pose(view.Zoom) : null);
+        AnimateTo(Pose(zoom), 175, animate);
+    }
+
+    public void ResetZoom()
+    {
+        if (view.WholeWorkspace || motionTo?.WholeWorkspace == true) ShowFullWorkspace();
+        else ZoomTo(1);
     }
 
     public void PanFrom(Viewport origin, Vector screenDelta, bool notify = true) =>
-        SetView(origin with { X = origin.X + screenDelta.X, Y = origin.Y + screenDelta.Y }, notify);
+        SetView(origin.WholeWorkspace ? origin : origin with { X = origin.X + screenDelta.X, Y = origin.Y + screenDelta.Y }, notify);
 
     public void Fit() => Fit(animate: true);
 
     public void Fit(bool animate)
     {
-        if (objects.Count == 0) { ShowFullWorkspace(animate); return; }
+        CancelGesture();
+        animate &= !view.WholeWorkspace;
+        if (objects.Count == 0) { AnimateTo(new(), 175, animate); return; }
         Rect bounds = Rect.Empty;
         foreach (SceneObject obj in objects) bounds.Union(obj.Bounds);
         double zoom = Math.Min(1.25, Math.Min((ActualWidth - 110) / Math.Max(1, bounds.Width), (ActualHeight - 172) / Math.Max(1, bounds.Height)));
-        if (zoom <= FullWorkspaceView.Zoom) { ShowFullWorkspace(animate); return; }
+        zoom = Math.Max(zoom, FullWorkspaceView.Zoom * 1.08);
         AnimateTo(new(-(bounds.X + bounds.Width / 2) * zoom, -(bounds.Y + bounds.Height / 2) * zoom, zoom), 175, animate);
     }
 

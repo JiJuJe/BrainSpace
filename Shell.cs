@@ -28,7 +28,7 @@ internal sealed partial class Shell : Window
     private readonly TextBlock toast = new() { HorizontalAlignment = HorizontalAlignment.Center };
     private readonly Border toastBox;
     private readonly Button undo, redo, maximize, home, boardSearch;
-    private readonly Button inkColor, inkWeight;
+    private readonly Button inkColor, inkWeight, globeButton, mapButton;
     private readonly Border inkOptions, zoomBox;
     private readonly DispatcherTimer saveTimer, toastTimer;
     private readonly Dictionary<Guid, Viewport> views;
@@ -156,12 +156,14 @@ internal sealed partial class Shell : Window
 
         var zoom = new StackPanel { Orientation = Orientation.Horizontal };
         zoom.Children.Add(IconButton("minus", "Zoom out", () => canvas.Zoom(1 / 1.2), 30, 33));
-        var resetZoom = TextButton(zoomText, () => canvas.ZoomTo(1), 51, 33);
+        var resetZoom = TextButton(zoomText, canvas.ResetZoom, 51, 33);
         resetZoom.ToolTip = "Reset zoom";
         AutomationProperties.SetName(resetZoom, "Reset zoom to 100 percent");
         zoom.Children.Add(resetZoom);
         zoom.Children.Add(IconButton("plus", "Zoom in", () => canvas.Zoom(1.2), 30, 33));
-        zoom.Children.Add(IconButton("globe", "Workspace globe (Shift+F)", () => { canvas.Focus(); canvas.ShowFullWorkspace(); }, 32, 33));
+        globeButton = IconButton("globe", "Workspace globe (Shift+F)", () => { canvas.Focus(); canvas.ShowFullWorkspace(); }, 32, 33);
+        mapButton = IconButton("map", "Return to editable map (F)", () => { canvas.Focus(); canvas.Fit(); }, 32, 33);
+        zoom.Children.Add(new Grid { Children = { globeButton, mapButton } });
         zoomBox = Frame(zoom, "BarBrush", new Thickness(1), 11, new Thickness(3));
         zoomBox.HorizontalAlignment = HorizontalAlignment.Right;
         zoomBox.VerticalAlignment = VerticalAlignment.Bottom;
@@ -358,8 +360,12 @@ internal sealed partial class Shell : Window
 
     private void UpdateZoom()
     {
-        zoomText.Text = canvas.View.Zoom < .01 ? "<1%" : $"{Math.Round(canvas.View.Zoom * 100)}%";
-        boardTools.Visibility = board != Guid.Empty && !canvas.View.WholeWorkspace ? Visibility.Visible : Visibility.Collapsed;
+        bool globe = canvas.View.WholeWorkspace;
+        double scale = globe ? canvas.View.GlobeMagnification : canvas.View.Zoom;
+        zoomText.Text = scale < .01 ? "<1%" : $"{Math.Round(scale * 100)}%";
+        globeButton.Visibility = globe ? Visibility.Collapsed : Visibility.Visible;
+        mapButton.Visibility = globe ? Visibility.Visible : Visibility.Collapsed;
+        boardTools.Visibility = board != Guid.Empty && !globe ? Visibility.Visible : Visibility.Collapsed;
         PositionZoomBox();
     }
 

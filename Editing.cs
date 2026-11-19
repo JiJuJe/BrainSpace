@@ -431,7 +431,7 @@ internal sealed partial class Shell
             (true, false, Key.Z) => shift ? journal.Redo : journal.Undo, (true, false, Key.Y) => journal.Redo,
             (true, false, Key.C) => CopySelection, (true, false, Key.V) => () => Paste(canvas.PointerWorld),
             (true, false, Key.D) when canvas.Selection.Count > 0 => () => Duplicate(canvas.Selection.First()),
-            (true, false, Key.D0) => () => canvas.ZoomTo(1),
+            (true, false, Key.D0) => canvas.ResetZoom,
             (false, true, Key.Left) => () => NavigateHistory(-1), (false, true, Key.Right) => () => NavigateHistory(1),
             (false, true, Key.Home) => () => Navigate(Guid.Empty),
             (false, false, Key.Delete) => DeleteSelection,

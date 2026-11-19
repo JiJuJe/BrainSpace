@@ -13,7 +13,7 @@ internal sealed partial class WorkspaceCanvas
     private double zoomTrail;
     public event Action? ZoomProgress;
 
-    private void AnimateTo(Viewport destination, double milliseconds, bool animate, Viewport? start = null)
+    private void AnimateTo(Viewport destination, double milliseconds, bool animate)
     {
         if (!animate || !IsLoaded || !SystemParameters.ClientAreaAnimation)
         {
@@ -23,7 +23,7 @@ internal sealed partial class WorkspaceCanvas
         }
         if (destination == view && motionTo is null) return;
         if (motionTo is null) CompositionTarget.Rendering += OnCameraFrame;
-        motionFrom = start ?? view;
+        motionFrom = view;
         motionTo = destination;
         motionStart = Stopwatch.GetTimestamp();
         motionDuration = milliseconds;
@@ -51,14 +51,15 @@ internal sealed partial class WorkspaceCanvas
         if (progress >= 1) { StopMotion(finish: true); return; }
         double ease = 1 - Math.Pow(1 - progress, 3);
         var next = new Viewport(start.X + (end.X - start.X) * ease, start.Y + (end.Y - start.Y) * ease,
-            start.Zoom + (end.Zoom - start.Zoom) * ease);
+            start.Zoom + (end.Zoom - start.Zoom) * ease, WholeWorkspace: start.WholeWorkspace && end.WholeWorkspace,
+            GlobeMagnification: start.GlobeMagnification + (end.GlobeMagnification - start.GlobeMagnification) * ease);
         double ratio = view.Zoom / next.Zoom;
         zoomTrail = Math.Clamp(ratio - 1, -.045, .045);
         var lag = new Vector(view.X - next.X * ratio, view.Y - next.Y * ratio);
         cameraTrail = ClampLength(lag * .45, 9);
-        bool zoomed = next.Zoom != view.Zoom;
+        double previousZoom = view.Zoom;
         SetView(next, notify: false);
-        if (zoomed) ZoomProgress?.Invoke();
+        if (view.Zoom != previousZoom) ZoomProgress?.Invoke();
     }
 
     private static Vector ClampLength(Vector vector, double maximum) =>

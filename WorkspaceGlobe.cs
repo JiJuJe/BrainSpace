@@ -10,6 +10,7 @@ internal sealed partial class WorkspaceCanvas
     private static readonly GlobeOrientation UprightGlobe = new(0, 0, 0, 1);
     private static readonly Point3D[][] GlobeGrid = CreateGlobeGrid();
     private const int GlobeLabelLimit = 54;
+    private const double MaxGlobePitch = 84;
     private double globeMapRadius = 850;
     private double GlobeRadius => workspaceRadius * view.Zoom;
     private Point GlobeCenter => Center + new Vector(view.X, view.Y);
@@ -39,19 +40,38 @@ internal sealed partial class WorkspaceCanvas
         return matrix;
     }
 
-    private void RotateGlobe(Vector3D axis, double degrees, bool notify)
+    private readonly record struct GlobeAngles(double Yaw, double Pitch)
     {
-        if (axis.LengthSquared < 1e-12 || degrees == 0) return;
-        if (notify) StopGlobeSpin();
-        Quaternion rotation = new Quaternion(axis, degrees) * RotationOf(view.Rotation);
-        SetGlobeRotation(rotation, notify);
+        public GlobeAngles Offset(Vector degrees) =>
+            new(Math.IEEERemainder(Yaw + degrees.X, 360), Math.Clamp(Pitch + degrees.Y, -MaxGlobePitch, MaxGlobePitch));
     }
 
-    private void SetGlobeRotation(Quaternion rotation, bool notify)
+    private GlobeAngles GetGlobeAngles()
     {
-        rotation.Normalize();
-        SetView(view with { Rotation = new(rotation.X, rotation.Y, rotation.Z, rotation.W) }, notify);
+        Matrix3D rotation = GlobeMatrix();
+        rotation.Invert();
+        Vector3D front = rotation.Transform(new Vector3D(0, 0, 1));
+        double yaw = Math.Atan2(-front.X, front.Z) * 180 / Math.PI;
+        double pitch = Math.Asin(Math.Clamp(front.Y, -1, 1)) * 180 / Math.PI;
+        return new(yaw, Math.Clamp(pitch, -MaxGlobePitch, MaxGlobePitch));
     }
+
+    private static GlobeOrientation RotationFor(GlobeAngles angles)
+    {
+        Quaternion rotation = new Quaternion(new Vector3D(1, 0, 0), angles.Pitch) *
+            new Quaternion(new Vector3D(0, 1, 0), angles.Yaw);
+        rotation.Normalize();
+        return new(rotation.X, rotation.Y, rotation.Z, rotation.W);
+    }
+
+    private void TurnGlobe(Vector degrees, bool notify)
+    {
+        if (notify) StopGlobeSpin();
+        SetGlobeAngles(GetGlobeAngles().Offset(degrees), notify);
+    }
+
+    private void SetGlobeAngles(GlobeAngles angles, bool notify) =>
+        SetView(view with { Rotation = RotationFor(angles) }, notify);
 
     public void ResetGlobeOrientation()
     {
@@ -59,26 +79,15 @@ internal sealed partial class WorkspaceCanvas
         SetView(view with { Rotation = UprightGlobe });
     }
 
-    private Vector3D DragGlobe(Point from, Point to)
+    private Vector DragGlobe(Point from, Point to)
     {
-        Vector3D first = DragVector(from), second = DragVector(to);
-        Vector3D axis = Vector3D.CrossProduct(first, second);
-        double length = axis.Length;
-        if (length < 1e-6) return new();
-        double degrees = Math.Atan2(length, Vector3D.DotProduct(first, second)) * 180 / Math.PI;
-        RotateGlobe(axis, degrees, notify: false);
-        return axis * (degrees / length);
-    }
-
-    private Vector3D DragVector(Point point)
-    {
-        Vector position = (point - GlobeCenter) / Math.Max(1, GlobeRadius);
-        double radiusSquared = position.LengthSquared;
-        // Blend the arcball into a hyperbolic sheet so a drag stays smooth beyond the rim.
-        double depth = radiusSquared <= .5 ? Math.Sqrt(1 - radiusSquared) : .5 / Math.Sqrt(radiusSquared);
-        var direction = new Vector3D(position.X, position.Y, depth);
-        direction.Normalize();
-        return direction;
+        Vector delta = to - from;
+        double degreesPerPixel = (180 / Math.PI) / Math.Max(160, GlobeRadius);
+        var degrees = new Vector(delta.X * degreesPerPixel, -delta.Y * degreesPerPixel);
+        GlobeAngles previous = GetGlobeAngles();
+        GlobeAngles next = previous.Offset(degrees);
+        SetGlobeAngles(next, notify: false);
+        return new(degrees.X, next.Pitch - previous.Pitch);
     }
 
     private Vector3D Trackball(Point point)

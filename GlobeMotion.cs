@@ -1,23 +1,21 @@
 using System.Diagnostics;
 using System.Windows;
 using System.Windows.Media;
-using System.Windows.Media.Media3D;
 
 namespace BrainSpace;
 
 internal sealed partial class WorkspaceCanvas
 {
-    private const double SpinDamping = 7.5;
-    private const double MaxSpinSpeed = 320;
-    private const double MaxSpinSeconds = .65;
-    private const double ReleaseWindow = .09;
-    private const double StopSpinSpeed = 7;
+    private const double SpinDamping = 8.5;
+    private const double MaxSpinSpeed = 245;
+    private const double ReleaseWindow = .075;
+    private const double StopSpinSpeed = 9;
 
-    private sealed record GlobeSpin(Quaternion Start, Vector3D Axis, double Speed, double Duration, long Timestamp);
+    private sealed record GlobeSpin(GlobeAngles Start, Vector Velocity, double Duration, long Timestamp);
     private GlobeSpin? globeSpin;
     private Point globePointer;
     private long globeDragSample, globeLastMovement;
-    private Vector3D globeDragVelocity, globePendingRotation;
+    private Vector globeDragVelocity, globePendingRotation;
 
     private void BeginGlobeDrag(Point point, long timestamp)
     {
@@ -31,7 +29,7 @@ internal sealed partial class WorkspaceCanvas
     {
         moved |= (point - startScreen).LengthSquared >= 9;
         if (!moved || point == globePointer) return;
-        Vector3D rotation = DragGlobe(globePointer, point);
+        Vector rotation = DragGlobe(globePointer, point);
         globePointer = point;
         if (rotation.LengthSquared == 0) return;
         globeLastMovement = timestamp;
@@ -39,12 +37,13 @@ internal sealed partial class WorkspaceCanvas
 
         double elapsed = Stopwatch.GetElapsedTime(globeDragSample, timestamp).TotalSeconds;
         if (elapsed < .001) return;
-        Vector3D instant = globePendingRotation / elapsed;
-        if (instant.Length > MaxSpinSpeed) instant *= MaxSpinSpeed / instant.Length;
-        double smoothing = globeDragVelocity.LengthSquared == 0 ? 1 : 1 - Math.Exp(-elapsed / .034);
-        globeDragVelocity += (instant - globeDragVelocity) * smoothing;
+        Vector instant = ClampLength(globePendingRotation / elapsed, MaxSpinSpeed);
+        double weight = 1 - Math.Exp(-elapsed / .022);
+        globeDragVelocity = new(Blend(globeDragVelocity.X, instant.X), Blend(globeDragVelocity.Y, instant.Y));
         globeDragSample = timestamp;
         globePendingRotation = new();
+
+        double Blend(double previous, double latest) => previous * latest <= 0 ? latest : previous + (latest - previous) * weight;
     }
 
     private bool StartGlobeSpin(long release, bool animate)
@@ -53,13 +52,15 @@ internal sealed partial class WorkspaceCanvas
         double age = Math.Max(0, Stopwatch.GetElapsedTime(globeLastMovement, release).TotalSeconds);
         if (age >= ReleaseWindow) return false;
 
-        double speed = globeDragVelocity.Length * (1 - age / ReleaseWindow);
+        GlobeAngles start = GetGlobeAngles();
+        Vector velocity = globeDragVelocity * (1 - age / ReleaseWindow);
+        if (Math.Abs(start.Pitch) >= MaxGlobePitch - 1e-6 && start.Pitch * velocity.Y > 0) velocity.Y = 0;
+        double speed = velocity.Length;
         double launchSpeed = 52 / Math.Sqrt(view.GlobeMagnification);
         if (speed < launchSpeed) return false;
 
-        double duration = Math.Min(MaxSpinSeconds, Math.Log(speed / StopSpinSpeed) / SpinDamping);
-        Vector3D axis = globeDragVelocity / globeDragVelocity.Length;
-        globeSpin = new(RotationOf(view.Rotation), axis, speed, duration, release);
+        double duration = Math.Log(speed / StopSpinSpeed) / SpinDamping;
+        globeSpin = new(start, velocity, duration, release);
         CompositionTarget.Rendering += OnGlobeSpinFrame;
         return true;
     }
@@ -73,9 +74,11 @@ internal sealed partial class WorkspaceCanvas
     {
         if (globeSpin is not { } spin) return;
         double time = Math.Clamp(seconds, 0, spin.Duration);
-        double angle = (spin.Speed / SpinDamping) * (1 - Math.Exp(-SpinDamping * time));
-        SetGlobeRotation(new Quaternion(spin.Axis, angle) * spin.Start, notify: false);
-        if (time >= spin.Duration) StopGlobeSpin();
+        double travel = (1 - Math.Exp(-SpinDamping * time)) / SpinDamping;
+        GlobeAngles orientation = spin.Start.Offset(spin.Velocity * travel);
+        SetGlobeAngles(orientation, notify: false);
+        if (time >= spin.Duration || (spin.Velocity.X == 0 && Math.Abs(orientation.Pitch) == MaxGlobePitch))
+            StopGlobeSpin();
     }
 
     private bool StopGlobeSpin()

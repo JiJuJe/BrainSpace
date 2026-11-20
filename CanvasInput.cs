@@ -343,10 +343,10 @@ internal sealed partial class WorkspaceCanvas
         if (!view.WholeWorkspace || gesture != Gesture.None || Keyboard.Modifiers != ModifierKeys.None) return;
         switch (e.Key)
         {
-            case Key.Left: RotateGlobe(new(0, 1, 0), -12, notify: true); break;
-            case Key.Right: RotateGlobe(new(0, 1, 0), 12, notify: true); break;
-            case Key.Up: RotateGlobe(new(1, 0, 0), 12, notify: true); break;
-            case Key.Down: RotateGlobe(new(1, 0, 0), -12, notify: true); break;
+            case Key.Left: TurnGlobe(new(-12, 0), notify: true); break;
+            case Key.Right: TurnGlobe(new(12, 0), notify: true); break;
+            case Key.Up: TurnGlobe(new(0, 12), notify: true); break;
+            case Key.Down: TurnGlobe(new(0, -12), notify: true); break;
             case Key.Home: ResetGlobeOrientation(); break;
             default: return;
         }

@@ -95,6 +95,7 @@ internal sealed partial class WorkspaceCanvas : FrameworkElement
         board = id;
         view = viewport.Zoom > 0 && double.IsFinite(viewport.Zoom) && (viewport.WholeWorkspace || viewport.Zoom <= 4) &&
             double.IsFinite(viewport.X) && double.IsFinite(viewport.Y) ? viewport : new();
+        if (view.Rotation is not null) view = view with { Rotation = RotationFor(GetGlobeAngles()) };
         Connecting = null;
         Selection.Clear();
         SetTool(Tool.Select);

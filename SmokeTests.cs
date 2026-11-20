@@ -107,7 +107,7 @@ internal sealed partial class WorkspaceCanvas
         ZoomTo(0, animate: false);
         bool fitsAgain = view.WholeWorkspace && view.GlobeMagnification == 1 && view.X == 0 && view.Y == 0;
         SetView(view with { Rotation = UprightGlobe }, notify: false);
-        RotateGlobe(new(0, 1, 0), 180, notify: false);
+        TurnGlobe(new(180, 0), notify: false);
         bool backHidden = GlobeMatrix().Transform(anchor).Z < 0 && HitGlobe(Center) is null;
         Fit(animate: false);
         bool returnedToMap = !view.WholeWorkspace;
@@ -124,7 +124,7 @@ internal sealed partial class WorkspaceCanvas
         var drawing = new DrawingGroup();
         for (int frame = -3; frame < timings.Length; frame++)
         {
-            RotateGlobe(new(.2, 1, 0), 2.3, notify: false);
+            TurnGlobe(new(2.3, .46), notify: false);
             long started = Stopwatch.GetTimestamp();
             using (DrawingContext context = drawing.Open()) OnRender(context);
             if (frame >= 0) timings[frame] = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
@@ -163,8 +163,17 @@ internal sealed partial class WorkspaceCanvas
 
         Drag(.03, .18);
         bool slow = !StartGlobeSpin(At(.185), animate: true);
+
+        SetView(view with { Rotation = UprightGlobe }, notify: false);
+        Drag(.27, .025);
+        UpdateGlobeDrag(startScreen + new Vector(.14 * GlobeRadius, 0), At(.038));
+        double yawAtRelease = GetGlobeAngles().Yaw;
+        bool reversed = StartGlobeSpin(At(.042), animate: true);
+        AdvanceGlobeSpin(.1);
+        reversed &= GetGlobeAngles().Yaw < yawAtRelease;
+        StopGlobeSpin();
         SetView(before with { Rotation = before.Rotation ?? UprightGlobe });
-        return launched && slows && catches && stale && reduced && launchedAgain && stops && slow;
+        return launched && slows && catches && stale && reduced && launchedAgain && stops && slow && reversed;
 
         long At(double seconds) => now + (long)(seconds * Stopwatch.Frequency);
         Vector3D Facing() => GlobeMatrix().Transform(new Vector3D(0, 0, 1));
@@ -177,10 +186,31 @@ internal sealed partial class WorkspaceCanvas
         }
     }
 
+    internal bool VerifyGlobeDragConsistency()
+    {
+        Viewport before = view;
+        ZoomTo(0, animate: false);
+        SetGlobeAngles(new(0, 0), notify: false);
+        Point center = GlobeCenter;
+        var travel = new Vector(.19 * GlobeRadius, -.13 * GlobeRadius);
+        DragGlobe(center, center + travel);
+        GlobeAngles middle = GetGlobeAngles();
+
+        SetGlobeAngles(new(0, 0), notify: false);
+        Point edge = center + new Vector(.78 * GlobeRadius, .2 * GlobeRadius);
+        DragGlobe(edge, edge + new Vector(travel.X, 0));
+        DragGlobe(edge + new Vector(travel.X, 0), edge + travel);
+        GlobeAngles atEdge = GetGlobeAngles();
+        Vector3D up = GlobeMatrix().Transform(new Vector3D(0, 1, 0));
+        bool consistent = middle.Yaw > 0 && middle.Pitch > 0 && Math.Abs(middle.Yaw - atEdge.Yaw) < .001 &&
+            Math.Abs(middle.Pitch - atEdge.Pitch) < .001 && Math.Abs(up.X) < .001;
+        SetView(before with { Rotation = before.Rotation ?? UprightGlobe });
+        return consistent;
+    }
+
     internal void RotateGlobePreview()
     {
-        RotateGlobe(new(0, 1, 0), 32, notify: true);
-        RotateGlobe(new(1, 0, 0), -22, notify: true);
+        TurnGlobe(new(32, -22), notify: true);
     }
 
     internal Point GlobeMarkerForTest(Guid id)
@@ -347,7 +377,8 @@ internal static class SmokeTests
                 "At 10% all six sample names are drawn smaller on the same world anchors and each center selects its original Brain");
             Check(demo.VerifyWorkspaceCircle(), "The outer zoom centers the full circle and keeps it visible during a pan");
             Check(demo.VerifyGlobe(), "The globe stays spherical during animated zoom and rotates at maximum magnification, with an explicit return to the editable map");
-            Check(demo.VerifyGlobeMomentum(), "A quick flick coasts and slows, a new input stops it, and a slow, paused or reduced-motion drag has no coast");
+            Check(demo.VerifyGlobeDragConsistency(), "Equal drags turn by the same amount at the center and edge, and diagonal input has no roll");
+            Check(demo.VerifyGlobeMomentum(), "A quick flick coasts in the final drag direction and slows, with no coast after a slow or paused drag");
             demo.SetZoomPreview(0);
             demo.UpdateLayout();
             SaveScreenshot(demo, Path.Combine(output, "workspace-overview.png"));
@@ -409,6 +440,7 @@ internal sealed partial class Shell
     internal bool VerifyWorkspaceCircle() => canvas.VerifyWholeWorkspace();
     internal bool VerifyGlobe() => canvas.VerifyGlobeRotation();
     internal bool VerifyGlobeMomentum() => canvas.VerifyGlobeMomentum();
+    internal bool VerifyGlobeDragConsistency() => canvas.VerifyGlobeDragConsistency();
     internal void RotateGlobePreview() => canvas.RotateGlobePreview();
     internal void ZoomGlobePreview() => canvas.Zoom(1.42, animate: false);
     internal void PreviewMap() => canvas.Fit(animate: false);

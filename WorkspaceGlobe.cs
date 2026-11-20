@@ -18,7 +18,7 @@ internal sealed partial class WorkspaceCanvas
     private readonly List<(SceneObject Object, Rect Bounds)> globeLabels = [];
     private Viewport? globeLabelView;
     private Size globeLabelSize;
-    private Brush? globeFill, globeGridBrush;
+    private Brush? globeFill, globeHalo, globeRim, globeOutline, globeGridBrush, globeEquator, globeLinks;
     private Point globePointer;
     private int globeClickCount;
     private MouseButton globeButton;
@@ -46,6 +46,12 @@ internal sealed partial class WorkspaceCanvas
         Quaternion rotation = new Quaternion(axis, degrees) * RotationOf(view.Rotation);
         rotation.Normalize();
         SetView(view with { Rotation = new(rotation.X, rotation.Y, rotation.Z, rotation.W) }, notify);
+    }
+
+    public void ResetGlobeOrientation()
+    {
+        StopMotion();
+        SetView(view with { Rotation = UprightGlobe });
     }
 
     private void DragGlobe(Point from, Point to)
@@ -100,24 +106,31 @@ internal sealed partial class WorkspaceCanvas
 
         if (globeFill is null) CreateGlobeBrushes();
         var outline = new EllipseGeometry(center, radius, radius);
+        drawing.DrawEllipse(globeHalo, null, center, radius * 1.07, radius * 1.07);
         drawing.DrawGeometry(globeFill, null, outline);
+        drawing.DrawGeometry(globeRim, null, outline);
         drawing.PushClip(outline);
 
         var grid = new StreamGeometry();
+        var equator = new StreamGeometry();
         using (StreamGeometryContext lines = grid.Open())
+        using (StreamGeometryContext major = equator.Open())
         {
-            foreach (Point3D[] ring in GlobeGrid)
+            for (int index = 0; index < GlobeGrid.Length; index++)
             {
+                Point3D[] ring = GlobeGrid[index];
+                StreamGeometryContext geometry = index == 2 ? major : lines;
                 Point3D previous = matrix.Transform(ring[0]);
                 for (int i = 1; i < ring.Length; i++)
                 {
                     Point3D next = matrix.Transform(ring[i]);
-                    AddSegment(lines, previous, next, center, radius);
+                    AddSegment(geometry, previous, next, center, radius);
                     previous = next;
                 }
             }
         }
         drawing.DrawGeometry(null, Stroke(globeGridBrush!, .8), grid);
+        drawing.DrawGeometry(null, Stroke(globeEquator!, 1), equator);
 
         var links = new StreamGeometry();
         int edgeStride = Math.Max(1, (objects.Count + 399) / 400);
@@ -136,7 +149,7 @@ internal sealed partial class WorkspaceCanvas
                             AddSegment(lines, from, midpoint, center, radius);
                             AddSegment(lines, midpoint, to, center, radius);
                         }
-        drawing.DrawGeometry(null, Stroke(theme.Edge, 1), links);
+        drawing.DrawGeometry(null, Stroke(globeLinks!, 1.15), links);
 
         bool dense = objects.Count > 320;
         const int cellSize = 8;
@@ -179,19 +192,21 @@ internal sealed partial class WorkspaceCanvas
         {
             (SceneObject obj, Rect bounds) = globeLabels[i];
             bool active = obj.Id == hovered || Selection.Contains(obj.Id);
+            bool root = obj.Brain?.Parent == Guid.Empty;
             FormattedText label = GlobeText(obj);
-            drawing.DrawRoundedRectangle(active ? theme.Active : theme.Node, Stroke(active ? theme.Accent : theme.Edge, active ? 1.2 : .8), bounds, 8, 8);
+            drawing.DrawRoundedRectangle(active || root ? theme.Active : theme.Node,
+                Stroke(active || root ? theme.Accent : globeLinks!, active ? 1.4 : .85), bounds, 8, 8);
             Point at = new(bounds.X + bounds.Width / 2, bounds.Y + bounds.Height / 2);
             if (labelScale != 1) drawing.PushTransform(new ScaleTransform(labelScale, labelScale, at.X, at.Y));
             drawing.DrawText(label, new(at.X - label.Width / 2, at.Y - label.Height / 2));
             if (labelScale != 1) drawing.Pop();
         }
         drawing.Pop();
-        drawing.DrawGeometry(null, Stroke(theme.Edge, 1.2), outline);
+        drawing.DrawGeometry(null, Stroke(globeOutline!, 1.3), outline);
 
         if (radius >= 105 && center.Y + radius + 30 < screen.Bottom)
         {
-            FormattedText hint = Text("Drag to rotate  ·  Scroll to zoom  ·  F for map", 11, 265, theme.Muted, false, false);
+            FormattedText hint = Text("Drag to rotate  ·  Scroll to zoom", 11, 205, theme.Muted, false, false);
             drawing.DrawText(hint, new(center.X - hint.Width / 2, center.Y + radius + 13));
         }
 
@@ -282,27 +297,46 @@ internal sealed partial class WorkspaceCanvas
                 return new Point3D(Math.Sin(angle) * Math.Cos(turn), Math.Sin(turn), Math.Cos(angle) * Math.Cos(turn));
             }).ToArray());
         }
+        Matrix3D tilt = Matrix3D.Identity;
+        tilt.Rotate(new Quaternion(new Vector3D(1, 0, 0), -14));
+        tilt.Rotate(new Quaternion(new Vector3D(0, 0, 1), -9));
+        foreach (Point3D[] ring in rings)
+            for (int i = 0; i < ring.Length; i++) ring[i] = tilt.Transform(ring[i]);
         return rings.ToArray();
     }
 
     private void CreateGlobeBrushes()
     {
+        Color canvas = theme.Canvas.Color, accent = theme.Accent.Color, outside = theme.CanvasOutside.Color;
+        bool light = canvas.R > 128;
         var fill = new RadialGradientBrush
         {
-            Center = new(.40, .36), GradientOrigin = new(.31, .26), RadiusX = .68, RadiusY = .68,
+            Center = new(.42, .40), GradientOrigin = new(.27, .22), RadiusX = .70, RadiusY = .70,
             GradientStops = new()
             {
-                new(Mix(theme.Canvas.Color, theme.Accent.Color, .17), 0),
-                new(Mix(theme.Canvas.Color, theme.Accent.Color, .05), .63),
-                new(Mix(theme.Canvas.Color, theme.CanvasOutside.Color, .78), 1)
+                new(Mix(canvas, accent, light ? .14 : .39), 0),
+                new(Mix(canvas, accent, light ? .22 : .23), .41),
+                new(Mix(canvas, accent, light ? .30 : .09), .74),
+                new(Mix(outside, accent, light ? .42 : .035), 1)
             }
         };
-        fill.Freeze();
-        globeFill = fill;
-        var grid = new SolidColorBrush(Mix(theme.Canvas.Color, theme.Edge.Color, .44));
-        grid.Freeze();
-        globeGridBrush = grid;
+        globeFill = Freeze(fill);
+        Color rim = Mix(accent, theme.Text.Color, .28);
+        globeRim = Freeze(new RadialGradientBrush(new GradientStopCollection
+        {
+            new(Color.FromArgb(0, rim.R, rim.G, rim.B), .82), new(Alpha(rim, 20), .965), new(Alpha(rim, 94), 1)
+        }));
+        globeHalo = Freeze(new RadialGradientBrush(new GradientStopCollection
+        {
+            new(Alpha(accent, 0), .85), new(Alpha(accent, light ? (byte)24 : (byte)48), .937), new(Alpha(accent, 0), 1)
+        }));
+        globeOutline = Freeze(new LinearGradientBrush(Mix(theme.Edge.Color, rim, .83), Mix(theme.Edge.Color, outside, .39), 48));
+        globeGridBrush = Freeze(new SolidColorBrush(Mix(canvas, theme.Edge.Color, light ? .56 : .70)));
+        globeEquator = Freeze(new SolidColorBrush(Mix(canvas, accent, light ? .63 : .34)));
+        globeLinks = Freeze(new SolidColorBrush(Mix(theme.Edge.Color, accent, .37)));
 
+        static Brush Freeze(Brush brush) { brush.Freeze(); return brush; }
+        static Color Alpha(Color value, byte alpha) => Color.FromArgb(alpha, value.R, value.G, value.B);
         static Color Mix(Color a, Color b, double weight) => Color.FromRgb(
             (byte)(a.R + (b.R - a.R) * weight), (byte)(a.G + (b.G - a.G) * weight), (byte)(a.B + (b.B - a.B) * weight));
     }

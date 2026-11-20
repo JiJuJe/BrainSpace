@@ -162,7 +162,7 @@ internal sealed partial class Shell : Window
         zoom.Children.Add(resetZoom);
         zoom.Children.Add(IconButton("plus", "Zoom in", () => canvas.Zoom(1.2), 30, 33));
         globeButton = IconButton("globe", "Workspace globe (Shift+F)", () => { canvas.Focus(); canvas.ShowFullWorkspace(); }, 32, 33);
-        mapButton = IconButton("map", "Return to editable map (F)", () => { canvas.Focus(); canvas.Fit(); }, 32, 33);
+        mapButton = IconButton("map", "Return to editable map", () => { canvas.Focus(); canvas.Fit(); }, 32, 33);
         zoom.Children.Add(new Grid { Children = { globeButton, mapButton } });
         zoomBox = Frame(zoom, "BarBrush", new Thickness(1), 11, new Thickness(3));
         zoomBox.HorizontalAlignment = HorizontalAlignment.Right;

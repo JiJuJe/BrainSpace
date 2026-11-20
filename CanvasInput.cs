@@ -71,6 +71,11 @@ internal sealed partial class WorkspaceCanvas
         startWorld = cursorWorld = ToWorld(startScreen);
         moved = false;
         delta = new();
+        if (e.ChangedButton == MouseButton.Right)
+        {
+            e.Handled = true;
+            return;
+        }
         if (view.WholeWorkspace)
         {
             if (e.ChangedButton is MouseButton.Left or MouseButton.Middle && (startScreen - GlobeCenter).Length <= GlobeRadius)
@@ -95,13 +100,6 @@ internal sealed partial class WorkspaceCanvas
         bool extend = shift || Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
         SceneObject? target = Hit(startWorld);
 
-        if (e.ChangedButton == MouseButton.Right)
-        {
-            if (target is not null && !Selection.Contains(target.Id)) Select(target.Id);
-            ShowMenu?.Invoke(target?.Id ?? Guid.Empty, startWorld);
-            e.Handled = true;
-            return;
-        }
         if (e.ChangedButton == MouseButton.Middle || (e.ChangedButton == MouseButton.Left && Keyboard.IsKeyDown(Key.Space)))
         {
             BeginPan();
@@ -261,7 +259,13 @@ internal sealed partial class WorkspaceCanvas
     protected override void OnMouseUp(MouseButtonEventArgs e)
     {
         base.OnMouseUp(e);
-        if (gesture == Gesture.None || e.ChangedButton == MouseButton.Right ||
+        if (e.ChangedButton == MouseButton.Right)
+        {
+            if (gesture == Gesture.None) OpenContextMenuAt(e.GetPosition(this));
+            e.Handled = true;
+            return;
+        }
+        if (gesture == Gesture.None ||
             (e.ChangedButton == MouseButton.Middle && gesture is not (Gesture.Pan or Gesture.RotateGlobe))) return;
         if (gesture == Gesture.RotateGlobe && e.ChangedButton != globeButton) return;
         Gesture action = gesture;
@@ -277,7 +281,12 @@ internal sealed partial class WorkspaceCanvas
                 {
                     SceneObject? hit = HitGlobe(e.GetPosition(this));
                     Select(hit?.Id ?? Guid.Empty);
-                    if (globeClickCount == 2 && hit is not null)
+                    if (Connecting is Guid from && hit?.Brain is not null)
+                    {
+                        Connecting = null;
+                        Connect?.Invoke(from, hit.Id);
+                    }
+                    else if (globeClickCount == 2 && hit is not null)
                     {
                         if (hit.Brain is not null) OpenBrain?.Invoke(hit.Id);
                         else FocusObject(hit.Id);
@@ -332,10 +341,22 @@ internal sealed partial class WorkspaceCanvas
             case Key.Right: RotateGlobe(new(0, 1, 0), 12, notify: true); break;
             case Key.Up: RotateGlobe(new(1, 0, 0), 12, notify: true); break;
             case Key.Down: RotateGlobe(new(1, 0, 0), -12, notify: true); break;
-            case Key.Home: SetView(view with { Rotation = UprightGlobe }); break;
+            case Key.Home: ResetGlobeOrientation(); break;
             default: return;
         }
         e.Handled = true;
+    }
+
+    internal void OpenContextMenuAt(Point screen)
+    {
+        StopMotion();
+        Point world = ToWorld(screen);
+        SceneObject? target = view.WholeWorkspace ? HitGlobe(screen) : InsideWorkspace(world) ? Hit(world) : null;
+        if (target is not null && !Selection.Contains(target.Id)) Select(target.Id);
+        if (view.WholeWorkspace)
+            world = target?.Bounds.TopLeft ?? GlobeWorldAt(screen) ?? new Point();
+        else if (!InsideWorkspace(world)) world = new Point();
+        ShowMenu?.Invoke(target?.Id ?? Guid.Empty, world);
     }
 
     protected override void OnLostMouseCapture(MouseEventArgs e)

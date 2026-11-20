@@ -108,6 +108,14 @@ internal sealed partial class Shell
 
     private void ShowCanvasMenu(Guid id, Point where)
     {
+        var menu = CreateCanvasMenu(id, where);
+        menu.Placement = PlacementMode.MousePoint;
+        menu.PlacementTarget = canvas;
+        menu.IsOpen = true;
+    }
+
+    private ContextMenu CreateCanvasMenu(Guid id, Point where)
+    {
         var actions = new List<(string, Action)>();
         if (journal.Current.Brains.TryGetValue(id, out Brain? brain))
         {
@@ -131,7 +139,11 @@ internal sealed partial class Shell
         {
             if (item.Kind == ItemKind.Text)
             {
-                actions.Add(("Edit text", () => EditText(id, where)));
+                actions.Add(("Edit text", () =>
+                {
+                    if (canvas.View.WholeWorkspace) canvas.FocusObject(id);
+                    EditText(id, where);
+                }));
                 actions.Add(("Text style…", () => TextStyle(item)));
                 actions.Add((item.Target.Length > 0 ? "Edit attached link…" : "Attach a link…", () => EditLink(id, attach: true)));
             }
@@ -140,6 +152,13 @@ internal sealed partial class Shell
             actions.Add(("Copy", CopySelection));
             actions.Add(("Duplicate", () => Duplicate(id)));
             actions.Add(("Delete", DeleteSelection));
+        }
+        else if (canvas.View.WholeWorkspace)
+        {
+            actions.Add((board == Guid.Empty ? "New Brain" : "New child Brain", () => PromptBrain(where, board)));
+            actions.Add(("Fit globe to window", canvas.ShowFullWorkspace));
+            actions.Add(("Reset orientation", canvas.ResetGlobeOrientation));
+            actions.Add(("Return to editable map", canvas.Fit));
         }
         else
         {
@@ -152,10 +171,7 @@ internal sealed partial class Shell
             }
             actions.Add(("Fit to view", canvas.Fit));
         }
-        var menu = CreateMenu(actions);
-        menu.Placement = PlacementMode.MousePoint;
-        menu.PlacementTarget = canvas;
-        menu.IsOpen = true;
+        return CreateMenu(actions);
     }
 
     private void EditText(Guid id, Point where)
@@ -448,7 +464,7 @@ internal sealed partial class Shell
             (false, false, Key.R) when board != Guid.Empty => () => SetTool(Tool.Rectangle),
             (false, false, Key.O) when board != Guid.Empty => () => SetTool(Tool.Ellipse),
             (false, false, Key.L) when board != Guid.Empty => () => SetTool(Tool.Line),
-            (false, false, Key.F) => shift ? canvas.ShowFullWorkspace : canvas.Fit,
+            (false, false, Key.F) when shift => canvas.ShowFullWorkspace,
             _ => null
         };
         if (action is null) return;

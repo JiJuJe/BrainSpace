@@ -139,6 +139,12 @@ internal sealed partial class WorkspaceCanvas
         RotateGlobe(new(0, 1, 0), 32, notify: true);
         RotateGlobe(new(1, 0, 0), -22, notify: true);
     }
+
+    internal Point GlobeMarkerForTest(Guid id)
+    {
+        EnsureGlobeAnchors();
+        return GlobeScreen(GlobeMatrix().Transform(globeAnchors[byId[id].Order]), GlobeCenter, GlobeRadius);
+    }
 }
 
 internal static class SmokeTests
@@ -307,6 +313,7 @@ internal static class SmokeTests
             demo.ZoomGlobePreview();
             demo.UpdateLayout();
             SaveScreenshot(demo, Path.Combine(output, "workspace-globe-zoomed.png"));
+            Check(demo.VerifyGlobeContextMenus(), "Right-click resolves globe labels and background at a zoomed, rotated camera");
             demo.PreviewMap();
             demo.ShowSearchPreview();
             demo.UpdateLayout();
@@ -360,6 +367,34 @@ internal sealed partial class Shell
     internal void RotateGlobePreview() => canvas.RotateGlobePreview();
     internal void ZoomGlobePreview() => canvas.Zoom(1.42, animate: false);
     internal void PreviewMap() => canvas.Fit(animate: false);
+    internal bool VerifyGlobeContextMenus()
+    {
+        Guid root = journal.Current.Brains.Values.Single(brain => brain.Parent == Guid.Empty).Id;
+        ContextMenu? menu = null;
+        Guid clicked = Guid.Empty;
+        canvas.ShowMenu -= ShowCanvasMenu;
+        canvas.ShowMenu += CaptureMenu;
+        try
+        {
+            canvas.OpenContextMenuAt(canvas.GlobeMarkerForTest(root));
+            bool selected = clicked == root && canvas.Selection.SetEquals([root]) && FindAction("Open Brain") is not null;
+            canvas.OpenContextMenuAt(new Point(12, 12));
+            MenuItem? reset = FindAction("Reset orientation");
+            bool background = clicked == Guid.Empty && reset is not null && FindAction("Fit globe to window") is not null;
+            double zoom = canvas.View.GlobeMagnification;
+            reset?.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent, reset));
+            return selected && background && canvas.View is { WholeWorkspace: true, Rotation: { X: 0, Y: 0, Z: 0, W: 1 } } &&
+                canvas.View.GlobeMagnification == zoom;
+        }
+        finally
+        {
+            canvas.ShowMenu -= CaptureMenu;
+            canvas.ShowMenu += ShowCanvasMenu;
+        }
+
+        void CaptureMenu(Guid id, Point where) { clicked = id; menu = CreateCanvasMenu(id, where); }
+        MenuItem? FindAction(string header) => menu?.Items.OfType<MenuItem>().SingleOrDefault(item => Equals(item.Header, header));
+    }
     internal void ShowSearchPreview() => ShowSearch();
     internal static bool SearchIndexSmoke(Content content) => Match(BuildSearchIndex(content), "Topic 3999", CancellationToken.None) is [{ Title: "Topic 3999" }];
     internal void PreviewMenu(string path)

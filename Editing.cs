@@ -16,13 +16,15 @@ internal sealed partial class Shell
 {
     private const string ClipboardItems = "BrainSpace.Items.v1";
 
-    private void NewBrain() => PromptBrain(board == Guid.Empty ? canvas.PointerWorld : null, board);
+    private void NewBrain() => PromptBrain(board == Guid.Empty ? canvas.PointerWorld : null, board, canvas.PointerGlobePosition);
 
-    private void PromptBrain(Point? where, Guid parent)
+    private void PromptBrain(Point? where, Guid parent) => PromptBrain(where, parent, null);
+
+    private void PromptBrain(Point? where, Guid parent, GlobePosition? globePosition, bool exact = false)
     {
         bool home = board == Guid.Empty;
         Point? preferred = home || parent == board ? where : null;
-        if (preferred is Point position && home && parent == Guid.Empty && !canvas.IsMouseOver)
+        if (preferred is Point position && globePosition is null && !exact && home && parent == Guid.Empty && !canvas.IsMouseOver)
         {
             if (journal.Current.Brains.Count != 0) position += new Vector(-115, 140);
             while (journal.Current.Brains.Values.Any(brain => canvas.TryBounds(brain.Id, out Rect bounds) &&
@@ -31,10 +33,19 @@ internal sealed partial class Shell
         }
         Prompt("New Brain", "Name", "", "Create", 160, title =>
         {
+            Point? location = preferred;
+            if (globePosition is not null)
+                location = home && parent == Guid.Empty ? BrainLayout.FreeRootPosition(journal.Current, title) : null;
+            else if (exact && location is Point click)
+            {
+                Size size = BrainLayout.SizeOf(title, root: home && parent == Guid.Empty, home);
+                location = click - new Vector(size.Width / 2, size.Height / 2);
+            }
             Guid id = Guid.Empty;
-            journal.Edit(data => id = data.AddBrain(parent, title, preferred, home));
+            journal.Edit(data => id = data.AddBrain(parent, title, location, home, globePosition, exact));
             canvas.Select(id);
-            if (canvas.TryBounds(id, out Rect placed) && !new Rect(canvas.RenderSize).Contains(canvas.ToScreen(new(placed.X + placed.Width / 2, placed.Y + placed.Height / 2))))
+            if (!canvas.View.WholeWorkspace && canvas.TryBounds(id, out Rect placed) &&
+                !new Rect(canvas.RenderSize).Contains(canvas.ToScreen(new(placed.X + placed.Width / 2, placed.Y + placed.Height / 2))))
                 canvas.FocusObject(id);
         });
     }
@@ -106,15 +117,15 @@ internal sealed partial class Shell
         Notify(existing is null ? "Brains connected." : "Connection removed.");
     }
 
-    private void ShowCanvasMenu(Guid id, Point where)
+    private void ShowCanvasMenu(Guid id, Point where, GlobePosition? globePosition)
     {
-        var menu = CreateCanvasMenu(id, where);
+        var menu = CreateCanvasMenu(id, where, globePosition);
         menu.Placement = PlacementMode.MousePoint;
         menu.PlacementTarget = canvas;
         menu.IsOpen = true;
     }
 
-    private ContextMenu CreateCanvasMenu(Guid id, Point where)
+    private ContextMenu CreateCanvasMenu(Guid id, Point where, GlobePosition? globePosition)
     {
         var actions = new List<(string, Action)>();
         if (journal.Current.Brains.TryGetValue(id, out Brain? brain))
@@ -155,14 +166,15 @@ internal sealed partial class Shell
         }
         else if (canvas.View.WholeWorkspace)
         {
-            actions.Add((board == Guid.Empty ? "New Brain" : "New child Brain", () => PromptBrain(where, board)));
+            if (globePosition is not null)
+                actions.Add((board == Guid.Empty ? "New Brain" : "New child Brain", () => PromptBrain(null, board, globePosition)));
             actions.Add(("Fit globe to window", canvas.ShowFullWorkspace));
             actions.Add(("Reset orientation", canvas.ResetGlobeOrientation));
             actions.Add(("Return to editable map", canvas.Fit));
         }
         else
         {
-            actions.Add((board == Guid.Empty ? "New Brain" : "New child Brain", () => PromptBrain(where, board)));
+            actions.Add((board == Guid.Empty ? "New Brain" : "New child Brain", () => PromptBrain(where, board, null, exact: true)));
             if (board != Guid.Empty)
             {
                 actions.Add(("Add text", () => EditText(Guid.Empty, where)));

@@ -6,19 +6,25 @@ namespace BrainSpace;
 
 internal sealed class Theme(Preferences settings)
 {
-    public SolidColorBrush Canvas { get; } = Brush(settings.Light ? "#F3F5F8" : "#101319");
-    public SolidColorBrush CanvasOutside { get; } = Brush(settings.Light ? "#E2E7EE" : "#0A0D12");
-    public SolidColorBrush Bar { get; } = Brush(settings.Light ? "#F9FAFC" : "#13171E");
-    public SolidColorBrush Surface { get; } = Brush(settings.Light ? "#FFFFFF" : "#191E27");
-    public SolidColorBrush Hover { get; } = Brush(settings.Light ? "#E3EBF5" : "#222A36");
-    public SolidColorBrush Text { get; } = Brush(settings.Light ? "#1A2636" : "#F2F5FA");
-    public SolidColorBrush Muted { get; } = Brush(settings.Light ? "#4D6075" : "#A1ADBF");
-    public SolidColorBrush Border { get; } = Brush(settings.Light ? "#CBD5E2" : "#303947");
-    public SolidColorBrush Node { get; } = Brush(settings.Light ? "#FDFEFF" : "#151A22");
-    public SolidColorBrush Edge { get; } = Brush(settings.Light ? "#8193A9" : "#667489");
-    public SolidColorBrush Dot { get; } = Brush(settings.Light ? "#C1CCDB" : "#35404E");
-    public SolidColorBrush Accent { get; } = Brush(ValidColor(settings.Accent, "#83C6FB"));
-    public SolidColorBrush Active { get; } = Brush(settings.Light ? "#DBEBFA" : "#203144");
+    public const string DefaultAccent = "#B29AF4";
+    public SolidColorBrush Canvas { get; } = Brush(settings.Light ? "#F6F4F8" : "#19181D");
+    public SolidColorBrush CanvasOutside { get; } = Brush(settings.Light ? "#EBE8F0" : "#131217");
+    public SolidColorBrush Bar { get; } = Brush(settings.Light ? "#F0EDF4" : "#201F25");
+    public SolidColorBrush Surface { get; } = Brush(settings.Light ? "#FFFFFF" : "#26242B");
+    public SolidColorBrush Hover { get; } = Brush(settings.Light ? "#ECE6F5" : "#302D37");
+    public SolidColorBrush Text { get; } = Brush(settings.Light ? "#282330" : "#EDEAF1");
+    public SolidColorBrush Muted { get; } = Brush(settings.Light ? "#625B70" : "#AAA4B4");
+    public SolidColorBrush Border { get; } = Brush(settings.Light ? "#D7D0E0" : "#393540");
+    public SolidColorBrush Node { get; } = Brush(settings.Light ? "#FCFBFD" : "#242229");
+    public SolidColorBrush Edge { get; } = Brush(settings.Light ? "#8A8098" : "#716979");
+    public SolidColorBrush Dot { get; } = Brush(settings.Light ? "#D5CEDD" : "#37333E");
+    public SolidColorBrush Accent { get; } = Brush(AccentColor(settings));
+    public SolidColorBrush Active { get; } = Brush(settings.Light ? "#E9DFF9" : "#392E50");
+
+    private static string AccentColor(Preferences settings) =>
+        string.Equals(settings.Accent, "#83C6FB", StringComparison.OrdinalIgnoreCase) || settings.Accent == DefaultAccent
+            ? settings.Light ? "#6241A6" : DefaultAccent
+            : ValidColor(settings.Accent, settings.Light ? "#6241A6" : DefaultAccent);
 
     public static string ValidColor(string? value, string fallback) =>
         value is { Length: 7 } && value[0] == '#' && value.AsSpan(1).ToArray().All(Uri.IsHexDigit) ? value : fallback;

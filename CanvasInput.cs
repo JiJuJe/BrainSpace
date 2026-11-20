@@ -359,10 +359,8 @@ internal sealed partial class WorkspaceCanvas
         Point world = ToWorld(screen);
         SceneObject? target = view.WholeWorkspace ? HitGlobe(screen) : InsideWorkspace(world) ? Hit(world) : null;
         if (target is not null && !Selection.Contains(target.Id)) Select(target.Id);
-        if (view.WholeWorkspace)
-            world = target?.Bounds.TopLeft ?? GlobeWorldAt(screen) ?? new Point();
-        else if (!InsideWorkspace(world)) world = new Point();
-        ShowMenu?.Invoke(target?.Id ?? Guid.Empty, world);
+        if (view.WholeWorkspace) world = target?.Bounds.TopLeft ?? new Point();
+        ShowMenu?.Invoke(target?.Id ?? Guid.Empty, world, view.WholeWorkspace ? GlobePositionAt(screen) : null);
     }
 
     protected override void OnLostMouseCapture(MouseEventArgs e)

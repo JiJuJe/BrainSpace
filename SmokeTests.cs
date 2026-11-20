@@ -218,6 +218,12 @@ internal sealed partial class WorkspaceCanvas
         EnsureGlobeAnchors();
         return GlobeScreen(GlobeMatrix().Transform(globeAnchors[byId[id].Order]), GlobeCenter, GlobeRadius);
     }
+
+    internal void ShowGlobeBackForTest()
+    {
+        ZoomTo(0, animate: false);
+        SetGlobeAngles(new(180, 0), notify: true);
+    }
 }
 
 internal static class SmokeTests
@@ -235,6 +241,8 @@ internal static class SmokeTests
             root = data.AddBrain(Guid.Empty, "Engineering", new(-420, -30), true);
             child = data.AddBrain(root, "Field notes", new(-20, -110), true);
             grandchild = data.AddBrain(child, "Latest", new(285, -80), true);
+            var backPosition = new GlobePosition(.2, .1, -Math.Sqrt(.95), Home: true);
+            data.Brains[grandchild] = data.Brains[grandchild] with { GlobePosition = backPosition };
             note = Guid.NewGuid(); stroke = Guid.NewGuid(); image = Guid.NewGuid();
             var orientation = new GlobeOrientation(0, .5, 0, Math.Sqrt(.75));
             var session = new Session(grandchild, new(), new()
@@ -266,6 +274,7 @@ internal static class SmokeTests
                 var (loaded, state) = store.Load();
                 Check(loaded.Trail(grandchild).Select(brain => brain.Id).SequenceEqual(new[] { root, child, grandchild }), "Three-level hierarchy survives restart");
                 Check(loaded.Brains[grandchild].X == 285 && state?.Board == grandchild && state.Views[grandchild].Zoom == 1.2, "Node positions, active board, and zoom survive restart");
+                Check(loaded.Brains[grandchild].GlobePosition == backPosition, "A back-side Brain position survives a workspace restart");
                 Check(state?.Views[Guid.Empty] is { WholeWorkspace: true, GlobeMagnification: 1.65 } saved && saved.Rotation == orientation,
                     "The globe orientation and magnification survive a workspace restart");
                 Check(loaded.Items[note].Text.Contains("Second line") && loaded.Items[note].Bold, "Multiline text and formatting survive restart");
@@ -288,7 +297,8 @@ internal static class SmokeTests
                 copy.Load();
                 var (imported, importedSession) = copy.Import(archive);
                 Check(imported.Brains.Count == 3 && imported.Items.Count == 3 && imported.Edges.Count == 1 && importedSession?.Board == grandchild &&
-                    copy.LoadImage(imported.Items[image].Target, 24) is not null, "Backup archive restores relationships, text, ink, camera, and assets");
+                    imported.Brains[grandchild].GlobePosition == backPosition && copy.LoadImage(imported.Items[image].Target, 24) is not null,
+                    "Backup archive restores relationships, text, ink, globe locations, camera, and assets");
                 Content merged = loaded.Copy();
                 Shell.Merge(merged, imported);
                 Check(merged.Brains.Count == 6 && merged.Items.Count == 6 && merged.Brains.ContainsKey(root), "Import as copy retains existing records");
@@ -397,6 +407,10 @@ internal static class SmokeTests
             demo.PreviewBoard();
             demo.UpdateLayout();
             SaveScreenshot(demo, Path.Combine(output, "board.png"));
+            Check(demo.VerifyGlobeCreation(), "Right-click creates a child Brain at the original point on the back of its board globe");
+            demo.NavigateToHomeForTest();
+            demo.UpdateLayout();
+            Check(demo.VerifyGlobeCreation(), "Right-click creates a root Brain at the original point on the back of the home globe");
             demo.Close();
 
             File.WriteAllLines(Path.Combine(output, "results.txt"), report);
@@ -469,8 +483,47 @@ internal sealed partial class Shell
             canvas.ShowMenu += ShowCanvasMenu;
         }
 
-        void CaptureMenu(Guid id, Point where) { clicked = id; menu = CreateCanvasMenu(id, where); }
+        void CaptureMenu(Guid id, Point where, GlobePosition? position) { clicked = id; menu = CreateCanvasMenu(id, where, position); }
         MenuItem? FindAction(string header) => menu?.Items.OfType<MenuItem>().SingleOrDefault(item => Equals(item.Header, header));
+    }
+
+    internal void NavigateToHomeForTest() => Navigate(Guid.Empty);
+
+    internal bool VerifyGlobeCreation()
+    {
+        canvas.ShowGlobeBackForTest();
+        var click = canvas.Center + new Vector(92, -47);
+        bool home = board == Guid.Empty;
+        string label = home ? "New Brain" : "New child Brain";
+        string title = home ? "Back side root" : "Back side child";
+        ContextMenu? menu = null;
+        canvas.ShowMenu -= ShowCanvasMenu;
+        canvas.ShowMenu += CaptureMenu;
+        try
+        {
+            canvas.OpenContextMenuAt(click);
+            MenuItem? create = menu?.Items.OfType<MenuItem>().SingleOrDefault(item => Equals(item.Header, label));
+            if (create is null) return false;
+            create.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent, create));
+            TextBox? input = Find<TextBox>(modalHost);
+            if (input is null) return false;
+            input.Text = title;
+            Button submit = NamedButtons(modalHost).Single(button => button.Content as string == "Create");
+            submit.RaiseEvent(new RoutedEventArgs(Button.ClickEvent, submit));
+            Brain brain = journal.Current.Brains.Values.Single(candidate => candidate.Title == title);
+            bool placed = brain.Parent == board && brain.GlobePosition is { Z: < 0 } position && position.Home == home &&
+                canvas.View.WholeWorkspace && (canvas.GlobeMarkerForTest(brain.Id) - click).Length < .01;
+            journal.Undo();
+            bool undone = !journal.Current.Brains.ContainsKey(brain.Id);
+            journal.Redo();
+            return placed && undone && (canvas.GlobeMarkerForTest(brain.Id) - click).Length < .01;
+        }
+        finally
+        {
+            canvas.ShowMenu -= CaptureMenu;
+            canvas.ShowMenu += ShowCanvasMenu;
+        }
+        void CaptureMenu(Guid id, Point where, GlobePosition? position) => menu = CreateCanvasMenu(id, where, position);
     }
     internal void ShowSearchPreview() => ShowSearch();
     internal static bool SearchIndexSmoke(Content content) => Match(BuildSearchIndex(content), "Topic 3999", CancellationToken.None) is [{ Title: "Topic 3999" }];

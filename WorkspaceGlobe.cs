@@ -97,14 +97,24 @@ internal sealed partial class WorkspaceCanvas
         return new(position.X, position.Y, Math.Sqrt(1 - position.LengthSquared));
     }
 
-    private Point? GlobeWorldAt(Point point)
+    internal GlobePosition? GlobePositionAt(Point point)
     {
         if ((point - GlobeCenter).LengthSquared > GlobeRadius * GlobeRadius) return null;
         Matrix3D inverse = GlobeMatrix();
         inverse.Invert();
         Vector3D surface = inverse.Transform(Trackball(point));
-        return surface.Z >= 0 ? new Point(surface.X * globeMapRadius, surface.Y * globeMapRadius) : null;
+        surface.Normalize();
+        return new(surface.X, surface.Y, surface.Z, board == Guid.Empty);
     }
+
+    private Point? GlobeWorldAt(Point point) =>
+        GlobePositionAt(point) is { Z: >= 0 } surface ? new Point(surface.X * globeMapRadius, surface.Y * globeMapRadius) : null;
+
+    internal GlobePosition? PointerGlobePosition =>
+        view.WholeWorkspace ? GlobePositionAt(IsMouseOver ? Mouse.GetPosition(this) : Center) ?? GlobePositionAt(Center) : null;
+
+    private GlobePosition? GlobePositionFor(Brain? brain) =>
+        brain?.GlobePosition is { } position && position.Home == (board == Guid.Empty) ? position : null;
 
     private void EnsureGlobeAnchors()
     {
@@ -113,6 +123,11 @@ internal sealed partial class WorkspaceCanvas
         globeProjected = new Point3D[objects.Count];
         foreach (SceneObject obj in objects)
         {
+            if (GlobePositionFor(obj.Brain) is { } position)
+            {
+                globeAnchors[obj.Order] = new(position.X, position.Y, position.Z);
+                continue;
+            }
             double x = (obj.Bounds.X + obj.Bounds.Width / 2) / globeMapRadius;
             double y = (obj.Bounds.Y + obj.Bounds.Height / 2) / globeMapRadius;
             globeAnchors[obj.Order] = new(x, y, Math.Sqrt(Math.Max(0, 1 - x * x - y * y)));
@@ -172,6 +187,11 @@ internal sealed partial class WorkspaceCanvas
                             Point3D from = globeProjected[obj.Order], to = globeProjected[edge.To.Order];
                             if (from.Z <= 0 && to.Z <= 0) continue;
                             var mid = new Vector3D(from.X + to.X, from.Y + to.Y, from.Z + to.Z);
+                            if (mid.LengthSquared < 1e-12)
+                            {
+                                var axis = Math.Abs(from.Y) < .9 ? new Vector3D(0, 1, 0) : new Vector3D(1, 0, 0);
+                                mid = Vector3D.CrossProduct((Vector3D)from, axis);
+                            }
                             mid.Normalize();
                             var midpoint = new Point3D(mid.X, mid.Y, mid.Z);
                             AddSegment(lines, from, midpoint, center, radius);
@@ -192,7 +212,7 @@ internal sealed partial class WorkspaceCanvas
         foreach (SceneObject obj in objects)
         {
             Point3D point = globeProjected[obj.Order];
-            if (point.Z <= 0) continue;
+            if (point.Z < -1e-9) continue;
             Point at = GlobeScreen(point, center, radius);
             if (!screen.Contains(at)) continue;
             if (dense)
@@ -223,7 +243,7 @@ internal sealed partial class WorkspaceCanvas
             bool root = obj.Brain?.Parent == Guid.Empty;
             FormattedText label = GlobeText(obj);
             drawing.DrawRoundedRectangle(active || root ? theme.Active : theme.Node,
-                Stroke(active || root ? theme.Accent : globeLinks!, active ? 1.4 : .85), bounds, 8, 8);
+                Stroke(active || root ? theme.Accent : globeLinks!, active ? 1.4 : .85), bounds, 5, 5);
             Point at = new(bounds.X + bounds.Width / 2, bounds.Y + bounds.Height / 2);
             if (labelScale != 1) drawing.PushTransform(new ScaleTransform(labelScale, labelScale, at.X, at.Y));
             drawing.DrawText(label, new(at.X - label.Width / 2, at.Y - label.Height / 2));
@@ -282,7 +302,7 @@ internal sealed partial class WorkspaceCanvas
         foreach (SceneObject obj in objects)
         {
             Point3D projected = matrix.Transform(globeAnchors[obj.Order]);
-            if (projected.Z <= 0) continue;
+            if (projected.Z < -1e-9) continue;
             double squared = (GlobeScreen(projected, center, radius) - point).LengthSquared;
             if (squared >= distance) continue;
             nearest = obj;
@@ -342,8 +362,8 @@ internal sealed partial class WorkspaceCanvas
             Center = new(.42, .40), GradientOrigin = new(.27, .22), RadiusX = .70, RadiusY = .70,
             GradientStops = new()
             {
-                new(Mix(canvas, accent, light ? .14 : .39), 0),
-                new(Mix(canvas, accent, light ? .22 : .23), .41),
+                new(Mix(canvas, accent, light ? .13 : .25), 0),
+                new(Mix(canvas, accent, light ? .19 : .15), .41),
                 new(Mix(canvas, accent, light ? .30 : .09), .74),
                 new(Mix(outside, accent, light ? .42 : .035), 1)
             }
@@ -352,11 +372,11 @@ internal sealed partial class WorkspaceCanvas
         Color rim = Mix(accent, theme.Text.Color, .28);
         globeRim = Freeze(new RadialGradientBrush(new GradientStopCollection
         {
-            new(Color.FromArgb(0, rim.R, rim.G, rim.B), .82), new(Alpha(rim, 20), .965), new(Alpha(rim, 94), 1)
+            new(Alpha(rim, 0), .86), new(Alpha(rim, 12), .965), new(Alpha(rim, 58), 1)
         }));
         globeHalo = Freeze(new RadialGradientBrush(new GradientStopCollection
         {
-            new(Alpha(accent, 0), .85), new(Alpha(accent, light ? (byte)24 : (byte)48), .937), new(Alpha(accent, 0), 1)
+            new(Alpha(accent, 0), .88), new(Alpha(accent, light ? (byte)15 : (byte)28), .937), new(Alpha(accent, 0), 1)
         }));
         globeOutline = Freeze(new LinearGradientBrush(Mix(theme.Edge.Color, rim, .83), Mix(theme.Edge.Color, outside, .39), 48));
         globeGridBrush = Freeze(new SolidColorBrush(Mix(canvas, theme.Edge.Color, light ? .56 : .70)));

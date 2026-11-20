@@ -47,7 +47,7 @@ internal sealed partial class WorkspaceCanvas : FrameworkElement
     public event Action<Guid, Point>? EditItem;
     public event Action<Guid>? OpenLink;
     public event Action<Guid, Guid>? Connect;
-    public event Action<Guid, Point>? ShowMenu;
+    public event Action<Guid, Point, GlobePosition?>? ShowMenu;
     public event Action<string[], Point>? ImportFiles;
     public bool InlineEdit { get; set; }
 
@@ -369,9 +369,10 @@ internal sealed partial class WorkspaceCanvas : FrameworkElement
         bool root = board == Guid.Empty && brain.Parent == Guid.Empty;
         bool selected = Selection.Contains(brain.Id);
         bool hover = hovered == brain.Id;
-        double rounded = rect.Height / 2;
-        Brush edge = selected || Connecting == brain.Id ? theme.Accent : hover ? theme.Accent : root ? theme.Accent : theme.Edge;
-        drawing.DrawRoundedRectangle(root || hover ? theme.Surface : theme.Node, Stroke(edge, selected ? 2.4 : root ? 1.9 : 1.15), rect, rounded, rounded);
+        double rounded = root ? 16 : 12;
+        Brush edge = selected || Connecting == brain.Id || hover || root ? theme.Accent : theme.Border;
+        drawing.DrawRoundedRectangle(selected ? theme.Active : root || hover ? theme.Surface : theme.Node,
+            Stroke(edge, selected ? 2 : root ? 1.6 : 1.1), rect, rounded, rounded);
         if (view.Zoom >= .38)
         {
             FormattedText label = Text(brain.Title, root ? 27 : 19, Math.Max(1, rect.Width - 40), theme.Text, root, false);

@@ -202,7 +202,8 @@ internal sealed class Storage : IDisposable
         if (visited.Count != content.Brains.Count + 1) throw new InvalidDataException("The Brain hierarchy contains missing parents or cycles.");
         foreach (var (id, brain) in content.Brains)
             if (id != brain.Id || string.IsNullOrWhiteSpace(brain.Title) || brain.Title.Length > 160 ||
-                !ValidCoordinate(brain.X) || !ValidCoordinate(brain.Y) || !ValidCoordinate(brain.BoardX) || !ValidCoordinate(brain.BoardY))
+                !ValidCoordinate(brain.X) || !ValidCoordinate(brain.Y) || !ValidCoordinate(brain.BoardX) || !ValidCoordinate(brain.BoardY) ||
+                (brain.GlobePosition is { } globe && !(Math.Abs(globe.X * globe.X + globe.Y * globe.Y + globe.Z * globe.Z - 1) < .0001)))
                 throw new InvalidDataException("The archive contains an invalid Brain.");
         foreach (var (id, item) in content.Items)
             if (item is null || id == Guid.Empty || id != item.Id || content.Brains.ContainsKey(id) || !content.Brains.ContainsKey(item.Board) || !ValidItem(item))

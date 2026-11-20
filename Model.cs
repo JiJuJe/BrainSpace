@@ -6,7 +6,7 @@ internal enum ItemKind { Text, Ink, Marker, Rectangle, Ellipse, Line, Image, Lin
 internal enum Tool { Select, Pen, Marker, Eraser, Text, Rectangle, Ellipse, Line }
 
 internal sealed record Brain(Guid Id, Guid Parent, string Title, double X, double Y,
-    double BoardX, double BoardY, bool Collapsed = false);
+    double BoardX, double BoardY, bool Collapsed = false, GlobePosition? GlobePosition = null);
 
 internal sealed record Item(Guid Id, Guid Board, ItemKind Kind, double X, double Y, double Width, double Height,
     string Text = "", string Target = "", string Color = "", double Weight = 3, double FontSize = 19,
@@ -14,9 +14,10 @@ internal sealed record Item(Guid Id, Guid Board, ItemKind Kind, double X, double
 
 internal sealed record Edge(Guid Id, Guid From, Guid To);
 internal readonly record struct GlobeOrientation(double X, double Y, double Z, double W);
+internal readonly record struct GlobePosition(double X, double Y, double Z, bool Home);
 internal sealed record Viewport(double X = 0, double Y = 0, double Zoom = 1, bool WholeWorkspace = false,
     GlobeOrientation? Rotation = null, double GlobeMagnification = 1);
-internal sealed record Preferences(bool Light = false, string Accent = "#83C6FB", bool CursorZoom = true,
+internal sealed record Preferences(bool Light = false, string Accent = Theme.DefaultAccent, bool CursorZoom = true,
     bool Rail = true, string InkColor = "#59CEE0", double InkWidth = 3, double InkOpacity = 1);
 internal sealed record Session(Guid Board, Preferences Settings, Dictionary<Guid, Viewport> Views);
 internal sealed record Content(Dictionary<Guid, Brain> Brains, Dictionary<Guid, Item> Items, Dictionary<Guid, Edge> Edges)
@@ -48,13 +49,14 @@ internal sealed record Content(Dictionary<Guid, Brain> Brains, Dictionary<Guid, 
         foreach (Edge edge in Edges.Values.Where(edge => removal.Contains(edge.From) || removal.Contains(edge.To)).ToArray()) Edges.Remove(edge.Id);
     }
 
-    public Guid AddBrain(Guid parent, string title, Point? position, bool home)
+    public Guid AddBrain(Guid parent, string title, Point? position, bool home, GlobePosition? globePosition = null, bool exact = false)
     {
         Guid id = Guid.NewGuid();
         Brains.TryGetValue(parent, out Brain? owner);
         Point map = home && position is Point mapClick ? mapClick : owner is null ? new Point() : BrainLayout.MapPosition(this, owner, title);
-        Point board = owner is null ? new Point() : BrainLayout.BoardPosition(this, parent, title, home ? null : position);
-        Brains.Add(id, new(id, parent, title, map.X, map.Y, board.X, board.Y));
+        Point board = owner is null ? new Point() : !home && exact && position is Point boardClick
+            ? boardClick : BrainLayout.BoardPosition(this, parent, title, home ? null : position);
+        Brains.Add(id, new(id, parent, title, map.X, map.Y, board.X, board.Y, GlobePosition: globePosition));
         if (owner is { Collapsed: true }) Brains[parent] = owner with { Collapsed = false };
         return id;
     }
@@ -73,7 +75,8 @@ internal sealed record Content(Dictionary<Guid, Brain> Brains, Dictionary<Guid, 
             bool root = brain.Id == source.Id;
             Brains.Add(copy, brain with { Id = copy, Parent = root ? source.Parent : mapping[brain.Parent],
                 Title = root ? brain.Title + " copy" : brain.Title, X = brain.X + 36, Y = brain.Y + 64,
-                BoardX = brain.BoardX + (root ? 36 : 0), BoardY = brain.BoardY + (root ? 64 : 0) });
+                BoardX = brain.BoardX + (root ? 36 : 0), BoardY = brain.BoardY + (root ? 64 : 0),
+                GlobePosition = root || brain.GlobePosition is { Home: true } ? null : brain.GlobePosition });
             foreach (Brain child in children[brain.Id]) pending.Enqueue(child);
         }
         foreach (Item item in Items.Values.ToArray())
@@ -98,7 +101,8 @@ internal sealed record Content(Dictionary<Guid, Brain> Brains, Dictionary<Guid, 
             throw new InvalidOperationException("A Brain can’t be moved into itself or one of its children.");
         if (brain.Parent == parent) return;
         Point board = parent == Guid.Empty ? new Point() : BrainLayout.BoardPosition(this, parent, brain.Title);
-        Brains[id] = brain with { Parent = parent, BoardX = board.X, BoardY = board.Y };
+        Brains[id] = brain with { Parent = parent, BoardX = board.X, BoardY = board.Y,
+            GlobePosition = brain.GlobePosition is { Home: false } ? null : brain.GlobePosition };
         if (!Brains.TryGetValue(parent, out Brain? owner)) return;
         PlaceOnParentBranch(id);
         Brains[parent] = owner with { Collapsed = false };

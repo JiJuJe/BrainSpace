@@ -21,7 +21,7 @@ internal sealed partial class Shell : Window
     private readonly Grid modalHost = new();
     private readonly Canvas editLayer = new();
     private readonly StackPanel crumbs = new() { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-    private readonly StackPanel rail = new() { Margin = new(8, 12, 8, 8) };
+    private readonly StackPanel rail = new() { Margin = new(5, 10, 5, 8) };
     private readonly StackPanel boardTools = new() { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Bottom, Margin = new(12, 0, 12, 25) };
     private readonly Dictionary<Tool, Button> toolButtons = [];
     private readonly TextBlock zoomText = new() { Text = "100%", MinWidth = 42, TextAlignment = TextAlignment.Center };
@@ -95,14 +95,14 @@ internal sealed partial class Shell : Window
         title.Children.Add(chrome);
         StateChanged += (_, _) => { maximize.Content = Icons.Draw(WindowState == WindowState.Maximized ? "restore" : "maximize", theme.Muted, 18); };
 
-        body.ColumnDefinitions.Add(new() { Width = new(59) });
+        body.ColumnDefinitions.Add(new() { Width = new(48) });
         body.ColumnDefinitions.Add(new() { Width = new(1, GridUnitType.Star) });
         Grid.SetRow(body, 1); root.Children.Add(body);
         body.Children.Add(Frame(rail, "BarBrush", new Thickness(0, 0, 1, 0), 0));
-        home = IconButton("home", "Home", () => Navigate(Guid.Empty), 41, 42);
+        home = IconButton("home", "Home", () => Navigate(Guid.Empty), 37, 39);
         rail.Children.Add(home);
-        rail.Children.Add(IconButton("search", "Search (Ctrl+K)", ShowSearch, 41, 42));
-        rail.Children.Add(IconButton("plus", "New Brain (Ctrl+N)", NewBrain, 41, 42));
+        rail.Children.Add(IconButton("search", "Search (Ctrl+K)", ShowSearch, 37, 39));
+        rail.Children.Add(IconButton("plus", "New Brain (Ctrl+N)", NewBrain, 37, 39));
         Grid.SetColumn(boardLayer, 1); body.Children.Add(boardLayer);
         boardLayer.ClipToBounds = true;
 
@@ -139,7 +139,7 @@ internal sealed partial class Shell : Window
         shapes.Click += (_, _) => ShowMenuAt(shapes,
             ("Rectangle (R)", () => SetTool(Tool.Rectangle)), ("Ellipse (O)", () => SetTool(Tool.Ellipse)), ("Line (L)", () => SetTool(Tool.Line)));
         tools.Children.Add(shapes);
-        boardTools.Children.Add(Frame(tools, "BarBrush", new Thickness(1), 13, new Thickness(4)));
+        boardTools.Children.Add(Frame(tools, "BarBrush", new Thickness(1), 8, new Thickness(4)));
 
         var ink = new StackPanel { Orientation = Orientation.Horizontal };
         inkColor = TextButton("", () => { }, 33, 34);
@@ -164,7 +164,7 @@ internal sealed partial class Shell : Window
         globeButton = IconButton("globe", "Workspace globe (Shift+F)", () => { canvas.Focus(); canvas.ShowFullWorkspace(); }, 32, 33);
         mapButton = IconButton("map", "Return to editable map", () => { canvas.Focus(); canvas.Fit(); }, 32, 33);
         zoom.Children.Add(new Grid { Children = { globeButton, mapButton } });
-        zoomBox = Frame(zoom, "BarBrush", new Thickness(1), 11, new Thickness(3));
+        zoomBox = Frame(zoom, "BarBrush", new Thickness(1), 8, new Thickness(3));
         zoomBox.HorizontalAlignment = HorizontalAlignment.Right;
         zoomBox.VerticalAlignment = VerticalAlignment.Bottom;
         zoomBox.Margin = new(0, 0, 25, 25);
@@ -307,7 +307,7 @@ internal sealed partial class Shell : Window
     {
         bool onBoard = board != Guid.Empty;
         bool showRail = settings.Rail && !onBoard;
-        body.ColumnDefinitions[0].Width = new(showRail ? 59 : 0);
+        body.ColumnDefinitions[0].Width = new(showRail ? 48 : 0);
         rail.Visibility = showRail ? Visibility.Visible : Visibility.Collapsed;
         boardSearch.Visibility = onBoard ? Visibility.Visible : Visibility.Collapsed;
         home.SetResourceReference(BackgroundProperty, onBoard ? "BarBrush" : "ActiveBrush");

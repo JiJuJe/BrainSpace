@@ -176,8 +176,8 @@ internal sealed partial class WorkspaceCanvas
             bool active = Selection.Contains(obj.Id) || hovered == obj.Id || Connecting == obj.Id;
             bool root = obj.Brain is { Parent: var parent } && parent == Guid.Empty;
             Rect bounds = label.Bounds;
-            double radius = obj.Brain is null ? 6 : bounds.Height / 2;
-            Brush border = active || root ? theme.Accent : obj.Brain is null ? theme.Border : theme.Edge;
+            double radius = Math.Min(6, bounds.Height / 3);
+            Brush border = active || root ? theme.Accent : theme.Border;
             drawing.DrawRoundedRectangle(active ? theme.Active : theme.Node, Stroke(border, active ? 1.4 : .85), bounds, radius, radius);
         }
 

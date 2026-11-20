@@ -57,23 +57,28 @@ internal sealed partial class WorkspaceCanvas
 
     private void UpdateWorkspaceRadius(Content data)
     {
-        double extentSquared = 0;
+        double extentSquared = 0, globeExtentSquared = 0;
         if (board == Guid.Empty)
         {
-            foreach (Brain brain in data.Brains.Values)
-                extentSquared = Math.Max(extentSquared, FarCornerSquared(BrainLayout.Bounds(brain, home: true)));
+            foreach (Brain brain in data.Brains.Values) Include(BrainLayout.Bounds(brain, home: true), brain);
         }
         else
         {
-            foreach (SceneObject obj in objects)
-                extentSquared = Math.Max(extentSquared, FarCornerSquared(obj.Bounds));
+            foreach (SceneObject obj in objects) Include(obj.Bounds, obj.Brain);
         }
         double extent = Math.Sqrt(extentSquared);
         workspaceRadius = RadiusFor(extent);
-        globeMapRadius = Math.Clamp(extent * 1.24, 850, workspaceRadius);
+        globeMapRadius = Math.Clamp(Math.Sqrt(globeExtentSquared) * 1.24, 850, workspaceRadius);
         globeAnchors = [];
         globeLabelSize = default;
         FitAfterWorkspaceChange();
+
+        void Include(Rect bounds, Brain? brain)
+        {
+            double corner = FarCornerSquared(bounds);
+            extentSquared = Math.Max(extentSquared, corner);
+            if (GlobePositionFor(brain) is null) globeExtentSquared = Math.Max(globeExtentSquared, corner);
+        }
     }
 
     private static double RadiusFor(double extent) => Math.Max(StartingRadius,

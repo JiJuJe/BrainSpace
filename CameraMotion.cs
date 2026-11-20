@@ -15,6 +15,7 @@ internal sealed partial class WorkspaceCanvas
 
     private void AnimateTo(Viewport destination, double milliseconds, bool animate)
     {
+        StopGlobeSpin();
         if (!animate || !IsLoaded || !SystemParameters.ClientAreaAnimation)
         {
             StopMotion();
@@ -31,6 +32,7 @@ internal sealed partial class WorkspaceCanvas
 
     public void StopMotion(bool finish = false)
     {
+        StopGlobeSpin();
         if (motionTo is not { } target) return;
         CompositionTarget.Rendering -= OnCameraFrame;
         motionTo = motionFrom = null;

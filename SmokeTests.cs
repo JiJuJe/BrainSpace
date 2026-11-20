@@ -134,6 +134,49 @@ internal sealed partial class WorkspaceCanvas
         return timings[(int)Math.Ceiling(timings.Length * .95) - 1];
     }
 
+    internal bool VerifyGlobeMomentum()
+    {
+        Viewport before = view;
+        ZoomTo(0, animate: false);
+        SetView(view with { Rotation = UprightGlobe }, notify: false);
+        long now = Stopwatch.GetTimestamp();
+
+        Drag(.24, .033);
+        bool launched = StartGlobeSpin(At(.038), animate: true);
+        Vector3D released = Facing();
+        AdvanceGlobeSpin(.12);
+        Vector3D first = Facing();
+        AdvanceGlobeSpin(.24);
+        Vector3D second = Facing();
+        double early = Vector3D.AngleBetween(released, first), late = Vector3D.AngleBetween(first, second);
+        bool slows = early > 2 && late > 0 && late < early;
+        StopMotion();
+        AdvanceGlobeSpin(.5);
+        bool catches = globeSpin is null && Facing() == second;
+
+        Drag(.24, .033);
+        bool stale = !StartGlobeSpin(At(.2), animate: true);
+        bool reduced = !StartGlobeSpin(At(.038), animate: false);
+        bool launchedAgain = StartGlobeSpin(At(.038), animate: true);
+        AdvanceGlobeSpin(1);
+        bool stops = globeSpin is null;
+
+        Drag(.03, .18);
+        bool slow = !StartGlobeSpin(At(.185), animate: true);
+        SetView(before with { Rotation = before.Rotation ?? UprightGlobe });
+        return launched && slows && catches && stale && reduced && launchedAgain && stops && slow;
+
+        long At(double seconds) => now + (long)(seconds * Stopwatch.Frequency);
+        Vector3D Facing() => GlobeMatrix().Transform(new Vector3D(0, 0, 1));
+        void Drag(double distance, double seconds)
+        {
+            startScreen = GlobeCenter;
+            moved = false;
+            BeginGlobeDrag(startScreen, now);
+            UpdateGlobeDrag(startScreen + new Vector(distance * GlobeRadius, 0), At(seconds));
+        }
+    }
+
     internal void RotateGlobePreview()
     {
         RotateGlobe(new(0, 1, 0), 32, notify: true);
@@ -304,6 +347,7 @@ internal static class SmokeTests
                 "At 10% all six sample names are drawn smaller on the same world anchors and each center selects its original Brain");
             Check(demo.VerifyWorkspaceCircle(), "The outer zoom centers the full circle and keeps it visible during a pan");
             Check(demo.VerifyGlobe(), "The globe stays spherical during animated zoom and rotates at maximum magnification, with an explicit return to the editable map");
+            Check(demo.VerifyGlobeMomentum(), "A quick flick coasts and slows, a new input stops it, and a slow, paused or reduced-motion drag has no coast");
             demo.SetZoomPreview(0);
             demo.UpdateLayout();
             SaveScreenshot(demo, Path.Combine(output, "workspace-overview.png"));
@@ -364,6 +408,7 @@ internal sealed partial class Shell
     internal Dictionary<Guid, double> CheckPreviewAnchors() => canvas.CheckLabelAnchors(6);
     internal bool VerifyWorkspaceCircle() => canvas.VerifyWholeWorkspace();
     internal bool VerifyGlobe() => canvas.VerifyGlobeRotation();
+    internal bool VerifyGlobeMomentum() => canvas.VerifyGlobeMomentum();
     internal void RotateGlobePreview() => canvas.RotateGlobePreview();
     internal void ZoomGlobePreview() => canvas.Zoom(1.42, animate: false);
     internal void PreviewMap() => canvas.Fit(animate: false);

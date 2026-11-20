@@ -19,7 +19,6 @@ internal sealed partial class WorkspaceCanvas
     private Viewport? globeLabelView;
     private Size globeLabelSize;
     private Brush? globeFill, globeHalo, globeRim, globeOutline, globeGridBrush, globeEquator, globeLinks;
-    private Point globePointer;
     private int globeClickCount;
     private MouseButton globeButton;
 
@@ -43,7 +42,13 @@ internal sealed partial class WorkspaceCanvas
     private void RotateGlobe(Vector3D axis, double degrees, bool notify)
     {
         if (axis.LengthSquared < 1e-12 || degrees == 0) return;
+        if (notify) StopGlobeSpin();
         Quaternion rotation = new Quaternion(axis, degrees) * RotationOf(view.Rotation);
+        SetGlobeRotation(rotation, notify);
+    }
+
+    private void SetGlobeRotation(Quaternion rotation, bool notify)
+    {
         rotation.Normalize();
         SetView(view with { Rotation = new(rotation.X, rotation.Y, rotation.Z, rotation.W) }, notify);
     }
@@ -54,12 +59,26 @@ internal sealed partial class WorkspaceCanvas
         SetView(view with { Rotation = UprightGlobe });
     }
 
-    private void DragGlobe(Point from, Point to)
+    private Vector3D DragGlobe(Point from, Point to)
     {
-        Vector3D first = Trackball(from), second = Trackball(to);
+        Vector3D first = DragVector(from), second = DragVector(to);
         Vector3D axis = Vector3D.CrossProduct(first, second);
-        double degrees = Math.Atan2(axis.Length, Vector3D.DotProduct(first, second)) * 180 / Math.PI;
+        double length = axis.Length;
+        if (length < 1e-6) return new();
+        double degrees = Math.Atan2(length, Vector3D.DotProduct(first, second)) * 180 / Math.PI;
         RotateGlobe(axis, degrees, notify: false);
+        return axis * (degrees / length);
+    }
+
+    private Vector3D DragVector(Point point)
+    {
+        Vector position = (point - GlobeCenter) / Math.Max(1, GlobeRadius);
+        double radiusSquared = position.LengthSquared;
+        // Blend the arcball into a hyperbolic sheet so a drag stays smooth beyond the rim.
+        double depth = radiusSquared <= .5 ? Math.Sqrt(1 - radiusSquared) : .5 / Math.Sqrt(radiusSquared);
+        var direction = new Vector3D(position.X, position.Y, depth);
+        direction.Normalize();
+        return direction;
     }
 
     private Vector3D Trackball(Point point)

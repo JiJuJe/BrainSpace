@@ -42,7 +42,7 @@ internal sealed partial class WorkspaceCanvas
 
     public bool CancelGesture()
     {
-        if (gesture == Gesture.None) return false;
+        if (gesture == Gesture.None) return StopGlobeSpin();
         if (gesture == Gesture.Pan) SetView(startView);
         if (gesture == Gesture.RotateGlobe) SetView(startView with { Rotation = startView.Rotation ?? UprightGlobe });
         gesture = Gesture.None;
@@ -81,9 +81,10 @@ internal sealed partial class WorkspaceCanvas
             if (e.ChangedButton is MouseButton.Left or MouseButton.Middle && (startScreen - GlobeCenter).Length <= GlobeRadius)
             {
                 startView = view;
-                globePointer = startScreen;
+                BeginGlobeDrag(startScreen, Stopwatch.GetTimestamp());
                 globeClickCount = e.ClickCount;
                 globeButton = e.ChangedButton;
+                hovered = Guid.Empty;
                 Cursor = Cursors.Hand;
                 Start(Gesture.RotateGlobe);
             }
@@ -195,12 +196,12 @@ internal sealed partial class WorkspaceCanvas
         {
             if (gesture == Gesture.RotateGlobe)
             {
-                moved |= (screen - startScreen).LengthSquared >= 9;
-                if (moved) { DragGlobe(globePointer, screen); globePointer = screen; }
+                UpdateGlobeDrag(screen, Stopwatch.GetTimestamp());
             }
             else
             {
                 Cursor = (screen - GlobeCenter).Length <= GlobeRadius ? Cursors.Hand : Cursors.Arrow;
+                if (globeSpin is not null) return;
                 Guid hit = HitGlobe(screen)?.Id ?? Guid.Empty;
                 if (hit != hovered) { hovered = hit; InvalidateVisual(); }
             }
@@ -276,7 +277,12 @@ internal sealed partial class WorkspaceCanvas
         switch (action)
         {
             case Gesture.RotateGlobe:
-                if (moved) ViewChanged?.Invoke(view);
+                long release = Stopwatch.GetTimestamp();
+                UpdateGlobeDrag(e.GetPosition(this), release);
+                if (moved)
+                {
+                    if (!StartGlobeSpin(release, IsLoaded && SystemParameters.ClientAreaAnimation)) ViewChanged?.Invoke(view);
+                }
                 else if (e.ChangedButton == MouseButton.Left)
                 {
                     SceneObject? hit = HitGlobe(e.GetPosition(this));
